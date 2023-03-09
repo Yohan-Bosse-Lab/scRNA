@@ -1,11 +1,11 @@
 ## Overview  
- * This repository contains scripts that are used in the analysis of single-cell RNAseq data from lung adenocarcinoma patients
- * It contains an `Rmarkdown` script than can be run as such from the command line (or alternatively, `Knit` directly in `Rstudio`) :
+ * This repository contains scripts used for the analysis of single-cell RNAseq data from lung adenocarcinoma patients.
+ * It contains`Rmarkdown` script than can be run as such from the command line (or alternatively, `Knit` directly in `R/Rstudio`) :
  * Use at own risk (it's mainly at the Proof-Of-Concept stage).
 
 
 ## Installation
-  * This is R-based, libraries requires are described in `.Rmd` files
+  * This is R-based, libraries requires are described in `.Rmd` files, but mainly:
 ```
 library(dplyr) #data handling
 library(Seurat) #scRNA data processing
