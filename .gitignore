@@ -1,0 +1,4 @@
+data/*
+Rmarkdown/*html
+.Rhistory
+.RData
