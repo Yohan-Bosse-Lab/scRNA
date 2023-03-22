@@ -49,7 +49,7 @@ adenocarcino
 # Quality control (scater::isOutlier()) 
   * Note that the minimum (lower) filters are a bit silly... 
   * Otherwise, the filters appear good, but IMHO too conservative for `nCount` (UMI) & `nFeature` (genes).
-```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F}
+```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F,eval = T}
 mt_isOutlier = attr(isOutlier(adenocarcino@meta.data$percent.mt),'thresholds')
 nCount_isOutlier = attr(isOutlier(adenocarcino@meta.data$nCount_RNA),'thresholds')
 nFeature_isOutlier = attr(isOutlier(adenocarcino@meta.data$nFeature_RNA),'thresholds')
@@ -81,10 +81,7 @@ adenocarcino_subset
 
 ```
 
-
-# QC (improved manually)
-  * MT-DNA filters are good. `nFeature_RNA` & `nCount_RNA` were modified.  
-```{r manual,fig.width = 11,echo =F, fig.height=8}
+```{r manual,fig.width = 11,echo =F, fig.height=8,eval = F}
 QC_manual = data.frame(rbind(c(250,5000),c(500,25000),c(0,27.65)))
 rownames(QC_manual) = c('nFeature (genes)','nCount (UMI)','MT')
 colnames(QC_manual) = colnames(QC_filters)
@@ -100,7 +97,7 @@ p3 <- VlnPlot(adenocarcino, features = "percent.mt", log = T) + geom_hline(yinte
 wrap_plots(p1, p2, p3, ncol = 3)
 
 
-adenocarcino_subset <- subset(adenocarcino, subset = 
+adenocarcino_subset_manual <- subset(adenocarcino, subset = 
                                 nFeature_RNA < QC_manual[1,2] &
                                 nCount_RNA < QC_manual[2,2] &
                                 percent.mt < QC_manual[3,2] &
@@ -111,13 +108,93 @@ adenocarcino_subset <- subset(adenocarcino, subset =
 ```
 
 
-```{r filtered,echo = F, message =T }
+```{r filtered,echo = F, message =T ,eval = F}
 message('Filtered seurat object: ')
 adenocarcino_subset
 ```
 
 
+```{r isoulier per sample,echo = F}
+#sample specific IDs are here.
+aggr = read.csv('aggregation.csv')
+aggr$method = rep(c('all','depleted'),4)
+aggr$patient = c(rep(c('P4'),4),rep(c('P6'),4))
+aggr$samplename = unlist(sapply( strsplit(aggr$sample_id,split="_"), "[", 1))
+aggr$sampletag = 1:8
+aggr$type = c('normal','normal','tumor','tumor','normal','normal','tumor','tumor')
+aggr$methodXtype = paste0(aggr$method,'_',aggr$type)
 
+
+#fill the metadata
+adenocarcino[["sampletag"]] = unlist(sapply(strsplit(rownames(adenocarcino@meta.data),split="-"), "[", 2))
+merged_meta = merge(adenocarcino@meta.data,aggr[,-2],by = "sampletag")
+adenocarcino@meta.data[,1:ncol(merged_meta)] = merged_meta
+colnames(adenocarcino@meta.data)[1:ncol(merged_meta)] = colnames(merged_meta)
+
+
+adenocarcino.list <- SplitObject(adenocarcino, split.by = "sample_id")
+
+thresholds = data.frame(sample_id =names(adenocarcino.list),mt_min=0,mt_max=0,nCount_min=0,nCount_max = 0,nFeature_min=0,nFeature_max=0)
+for(i in seq_along(adenocarcino.list)){
+  mt_isOutlier = attr(isOutlier(adenocarcino.list[[i]]@meta.data$percent.mt),'thresholds')
+  nCount_isOutlier = attr(isOutlier(adenocarcino.list[[i]]@meta.data$nCount_RNA),'thresholds')
+  nFeature_isOutlier = attr(isOutlier(adenocarcino.list[[i]]@meta.data$nFeature_RNA),'thresholds')
+  
+  thresholds[i,c(2,3)] = signif(mt_isOutlier,6)
+  thresholds[i,c(4,5)] = signif(nCount_isOutlier,6)
+  thresholds[i,c(6,7)] = signif(nFeature_isOutlier,6)
+  
+}
+
+datatable(thresholds)
+```
+
+# Filter per sample, then merge object.
+```{r filter per sample then merge,echo = F}
+adenocarcino.list.subset= adenocarcino.list
+for(i in seq_along(adenocarcino.list)){
+  
+adenocarcino.list.subset[[i]] <- subset(adenocarcino.list[[i]], subset = 
+                                nFeature_RNA > thresholds[i,6] &
+                                nCount_RNA > thresholds[i,4] &
+                                percent.mt > thresholds[i,2] &
+                               nFeature_RNA < thresholds[i,7] &
+                                nCount_RNA < thresholds[i,5] &
+                                percent.mt < thresholds[i,3])
+
+
+#adenocarcino.list.subset[[i]] <- subset(adenocarcino.list[[i]], subset = 
+ #                              nFeature_RNA > 250 &
+  #                              nCount_RNA > 500 &
+   #                             percent.mt > thresholds[i,2] &
+    #                            nFeature_RNA < 5000 &
+     #                           nCount_RNA < 25000 &
+      #                          percent.mt < thresholds[i,3])
+
+}
+
+
+#merge datasets back
+adenocarcino_m <- merge(adenocarcino.list.subset[[1]],
+                       y = adenocarcino.list.subset[-1],
+                       project='irsc')
+
+adenocarcino_m
+```
+
+```{r beforeafter plots, fig.width = 11, fig.height=8,echo =F}
+hist(log(adenocarcino@meta.data$nCount_RNA,10),breaks = seq(2,5.1,by =0.05),col = "darkred",main='nCount_RNA (UMI) filtering',xlab = 'log(Nb of UMIs per cell,10)')
+hist(log(adenocarcino_m@meta.data$nCount_RNA,10),breaks = seq(2,5.1,by =0.05),col = "blue",add=T)
+legend(x = 3.5,y = 3000,legend = c('before filtering','filtering (thresholds per sample)'),fill = c('darkred','blue')) 
+
+hist(log(adenocarcino@meta.data$nFeature_RNA,10),breaks = seq(1,4,by =0.05),col = "darkred",main='nFeature_RNA (genes) filtering',xlab = 'log(Nb of genes per cell,10)')
+hist(log(adenocarcino_m@meta.data$nFeature_RNA,10),breaks = seq(1,4,by =0.05),col = "blue",add=T)
+legend(x = 1,y = 4000,legend = c('before filtering','filtering (thresholds per sample)'),fill = c('darkred','blue','yellow'))  
+
+hist(adenocarcino@meta.data$percent.mt,breaks = seq(0,100,by =0.5),col = "darkred",main='MT percent filtering',xlab = 'MT percent')
+hist(adenocarcino_m@meta.data$percent.mt,breaks = seq(0,100,by =0.5),col = "blue",add=T)
+legend(x = 40,y = 2000,legend = c('before filtering','filtering (thresholds per sample)'),fill = c('darkred','blue')) 
+```
 
 
 ```{r sandbox,message  = T,echo = F, eval = F, fig.width = 11, fig.height=8,echo=F}

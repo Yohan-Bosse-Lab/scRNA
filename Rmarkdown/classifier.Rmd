@@ -1,0 +1,176 @@
+---
+title: "machine learning classifier"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Introduction  
+* classify cells into 58 different lung specific cell types. More information is found:
+  * [bioarxiv preprint](https://www.biorxiv.org/content/10.1101/2022.03.10.483747v1) (In Press @ Nature Medicine)
+  * [single cell dataset](https://cellxgene.cziscience.com/collections/6f6d381a-7701-4781-935c-db10d30de293) (580k cells * 28k genes)
+  * [Cell Type specific markers](https://beta.fastgenomics.org/datasets/detail-dataset-427f1eee6dd44f50bae1ab13f0f3c6a9#Files)
+  * [code and metadata](https://github.com/LungCellAtlas/HLCA/blob/main/docs/HLCA_metadata_explanation.csv)
+
+## Rmarkdown setup  
+* Setup, requirements, default knitr options, rootdir, timehook    
+* Note that you can render this document by running:  
+  * `Rscript -e "rmarkdown::render('scRNA_seurat_lung_adenocarcino_vSCT.Rmd',params = list())"`  
+  
+```{r, timehook,echo=F}
+knitr::knit_hooks$set(timehook = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now)
+      # return a character string to show the time
+      paste("\n\n\nTime for this code chunk to run:",signif(res,3),attr(res,'units'))
+    }
+  }
+}))
+```
+
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(scAnnotatR)
+library(dplyr)
+library(DT)
+```
+
+# Data preparation 
+```{r, dataprep, timehook = TRUE}
+hlca = readRDS('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/hlca_dataset_587k_cells.rds')
+markers_genes = read.csv('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/Marker_genes.csv',row.names = 1,check.names = F)
+```
+
+# Make syntactically valid names
+  * this is painful, but otherwise it gets messy with `scAnnotatR` and `Seurat`. 
+```{r, syntax, timehook = TRUE}
+hlca@meta.data$ann_finest_level_recoded = gsub("-","_",hlca@meta.data$ann_finest_level,fixed = T)
+hlca@meta.data$ann_finest_level_recoded = gsub(" (","_",hlca@meta.data$ann_finest_level_recoded,fixed = T)
+hlca@meta.data$ann_finest_level_recoded = gsub(")","",hlca@meta.data$ann_finest_level_recoded,fixed = T)
+hlca@meta.data$ann_finest_level_recoded = gsub(" ","_",hlca@meta.data$ann_finest_level_recoded,fixed = T)
+hlca@meta.data$ann_finest_level_recoded = gsub("φ","phi",hlca@meta.data$ann_finest_level_recoded,fixed = T)
+hlca@meta.data$ann_finest_level_recoded = gsub("+","plus",hlca@meta.data$ann_finest_level_recoded,fixed = T)
+hlca@meta.data$ann_finest_level_recoded = as.factor(hlca@meta.data$ann_finest_level_recoded)
+
+colnames(markers_genes) = gsub("-","_",colnames(markers_genes), fixed = T)
+colnames(markers_genes) = gsub(" (","_",colnames(markers_genes), fixed = T)
+colnames(markers_genes) = gsub(" ","_",colnames(markers_genes), fixed = T)
+colnames(markers_genes) = gsub(")","",colnames(markers_genes), fixed = T)
+colnames(markers_genes) = gsub("+","plus",colnames(markers_genes), fixed = T)
+colnames(markers_genes) = gsub("φ","phi",colnames(markers_genes))
+
+```
+
+
+# Train / Test set split
+ * Note that values below are given simply as a P-O-C. Train set should be at least 50k cells. 
+```{r, train test sets}
+
+#split data
+set.seed(123)
+train = sample(1:584884,2000)
+test = sample(c(1:584884)[-train],10000)
+
+train_set <- hlca[, train]
+test_set <- hlca[, test]
+
+
+#Ensembl to HGNC symbols conversion
+train_set@assays$RNA@counts@Dimnames[[1]] = as.character(train_set@assays$RNA@meta.features$feature_name)
+train_set@assays$RNA@data@Dimnames[[1]] =   as.character(train_set@assays$RNA@meta.features$feature_name)
+test_set@assays$RNA@counts@Dimnames[[1]] =  as.character(test_set@assays$RNA@meta.features$feature_name)
+test_set@assays$RNA@data@Dimnames[[1]] =    as.character(test_set@assays$RNA@meta.features$feature_name)
+
+#
+table(train_set@meta.data$ann_finest_level_recoded)
+```
+
+
+# train classifier (Support Vector Machine)
+```{r, classifier, timehook = TRUE}
+classifiers= list()
+number=58
+for(i in seq_along(markers_genes))
+  {
+  #train classifiers with a tryCatch error / warning failures
+   temp = tryCatch(train_classifier(train_obj = train_set,
+                        assay = 'RNA',
+                        slot = 'counts',
+                        marker_genes = markers_genes[,i],
+                        cell_type = colnames(markers_genes)[i],
+                        tag_slot = 'ann_finest_level_recoded',
+                        ambiguous_chars = 'ambiguous'),
+                   error = function(e) e,
+                   warning = function(w) w
+                   )
+   
+  
+  #catch failures
+  if((class(temp)[1] == "simpleError")) {classifiers[[i]] = 'error';print(paste0('error --- ',i))}
+  if((class(temp)[1] == "simpleWarning")) {classifiers[[i]] = 'warning';print(paste0('warning --- ',i))} 
+  if(class(temp)[1] == "scAnnotatR") classifiers[[i]] = temp
+  
+  if(i%%5==0) print(paste0(Sys.time()," --- ",i, ' of ',number))
+  
+  model_filepath = paste0('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/models/')
+  
+  if(class(classifiers[[i]])=='scAnnotatR') save_new_model(new_model = classifiers[[i]], path_to_models = model_filepath, include.default = FALSE) 
+  
+  }
+
+classifiers_trimed = classifiers[unlist(lapply(classifiers,class))=='scAnnotatR']
+
+```
+
+# Test classifiers
+```{r, test_classifier,timehook = TRUE}
+
+classifier_test=list()
+for(i in 1:length(classifiers_trimed)){
+  classifier_test[[i]] <- test_classifier(classifier = classifiers_trimed[[i]], test_obj = test_set,  
+                                     assay = 'RNA', slot = 'counts',tag_slot = 'ann_finest_level_recoded', ambiguous_chars = 'ambiguous')
+
+  if(i%%5==0) print(paste0(Sys.time()," --- ",i, ' of ',number))
+  }
+
+#classify
+classified_cells <- classify_cells(classify_obj = test_set,classifiers = classifiers_trimed, assay = 'RNA', slot = 'counts')
+```
+
+# More stats
+```{r, double check}
+#check again
+predictions = data.frame(mpct = classified_cells@meta.data$most_probable_cell_type,ann= classified_cells@meta.data$ann_finest_level_recoded)
+predictions$mpct = gsub(' ','_',predictions$mpct)
+predictions$accuracy = predictions$mpct == predictions$ann
+length(predictions[predictions$accuracy,1])/nrow(predictions)
+
+final = table(predictions$ann,predictions$accuracy)
+final = data.frame(true = final[,2],
+                   false= final[,1],
+                   true_prop = signif(final[,2]/rowSums(final)*100,4),
+                   false_prop = signif(final[,1]/rowSums(final)*100,4) )
+
+#check a few predictions manually
+sum(predictions[predictions$ann=='AT1',3])/length(predictions[predictions$ann=='AT1',3])
+sum(predictions[predictions$ann=='AT2',3])/length(predictions[predictions$ann=='AT2',3])
+sum(predictions[predictions$ann=='B_cells',3])/length(predictions[predictions$ann=='B_cells',3])
+sum(predictions[predictions$ann=='Suprabasal',3])/length(predictions[predictions$ann=='Suprabasal',3])
+```
+
+
