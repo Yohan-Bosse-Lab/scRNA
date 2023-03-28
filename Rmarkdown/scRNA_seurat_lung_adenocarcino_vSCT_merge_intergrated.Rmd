@@ -55,6 +55,7 @@ library(DT) #data viz
 
 
 ```{r filenames,message  = T, fig.width = 11, fig.height=8,echo=T}  
+#filenames =  list.files('.',pattern = '-CST-30.._[aS]',full.names = F)
 filenames =  list.files('.',pattern = '-CST-30.._[aS]',full.names = F)
 filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix')
 filenames
@@ -64,11 +65,11 @@ filenames
 ```{r qc,message  = F, fig.width = 11, fig.height=8,echo=F, timehook = TRUE}  
 #create seurat objects
 seurat.objects = list()
-
+l = length(filepaths)
 #create filters objects
-QC_filters=data.frame(nCount_min=rep(0,4),nCount_max=rep(0,4),
-                    nFeature_RNA_min=rep(0,4),nFeature_RNA_min=rep(0,4),
-                    percent.mt_min=rep(0,4),percent.mt_max=rep(0,4))
+QC_filters=data.frame(nCount_min=rep(0,l),nCount_max=rep(0,l),
+                    nFeature_RNA_min=rep(0,l),nFeature_RNA_min=rep(0,l),
+                    percent.mt_min=rep(0,l),percent.mt_max=rep(0,l))
 
 
 for(i in 1:length(filenames)) {
@@ -105,7 +106,19 @@ for(i in 1:length(filenames)) {
                assay = 'SCT', slot = 'counts',
                classifiers = hlca_models),TRUE)
   
-  if(class(temp)!='try-error') {seurat.objects[[i]]=temp}
+  if(class(temp)!='try-error') {
+    seurat.objects[[i]] = temp;
+    matches = read.csv('../data/HLCA/cell_types_matches.csv')
+
+    #coarsed annotation inference (level 1):
+    seurat.objects[[i]]@meta.data$ann_level_1_mpct  = 'unknown'
+      for(j in seq_along(seurat.objects[[i]]@meta.data$ann_level_1_mpct))
+        {
+          temp_match = matches$ann_finest_level_recoded == seurat.objects[[i]]@meta.data$most_probable_cell_type[j]
+          if(length(temp_match[temp_match]) == 1) seurat.objects[[i]]@meta.data$ann_level_1_mpct[j] = matches$ann_level_1[temp_match] 
+        }
+    }
+  
   if(class(temp)=='try-error') {print(temp)}
   
   print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (subsetting, classification, normalisation)'))
@@ -131,26 +144,36 @@ datatable(QC_filters,caption = htmltools::tags$caption(htmltools::strong("Filter
   * **Single Cells** are enriched in immune system related cells types (*macrophages*,  *NK*, *moncytes*, *DC2*).  
   * Around 80% of cells are annotated, which is pretty good.  
 ```{r celltypes,echo = F} 
-all4 = table(seurat.objects[[1]]@meta.data$most_probable_cell_type)
-sn4 = table(seurat.objects[[2]]@meta.data$most_probable_cell_type)
-all6 = table(seurat.objects[[3]]@meta.data$most_probable_cell_type)
-sn6 = table(seurat.objects[[4]]@meta.data$most_probable_cell_type)
+final_summary = list()
+for(level in c('most_probable_cell_type','ann_level_1_mpct'))
+  {
+    cell_type_summary = list()
+    CTS_fractions = list()
+    for(i in seq_along(filenames))
+      {
+      cell_type_summary[[i]] = table(seurat.objects[[i]]@meta.data[,colnames(seurat.objects[[i]]@meta.data) == level])
+      CTS_fractions[[i]] = signif(cell_type_summary[[i]]/sum(cell_type_summary[[i]])*100,4)
+    }
+    
+  all = merge(as.data.frame(CTS_fractions[[1]]),as.data.frame(CTS_fractions[[3]]),by= 'Var1',all =T)
+  sn  = merge(as.data.frame(CTS_fractions[[2]]),as.data.frame(CTS_fractions[[4]]),by= 'Var1',all =T)
+  sn_all = merge(sn,all,by = 'Var1',all = T)
+  sn_all = sn_all[order(sn_all$Var1),]
 
-all4_fractions = signif(all4/sum(all4)*100,4)
-sn4_fractions = signif(sn4/sum(sn4)*100,4)
-all6_fractions = signif(all6/sum(all6)*100,4)
-sn6_fractions = signif(sn6/sum(sn6)*100,4)
+  colnames(sn_all) = c('LungCellTypes','Single nuclei - P4','Single nuclei - P6','Single cells - P4','Single cells - P6')
+  sn_all$LungCellTypes = as.character(sn_all$LungCellTypes)
+  sn_all[nrow(sn_all)+1,1] = c('Total number of cells')
+  sn_all[nrow(sn_all),-1] = lapply(cell_type_summary,sum)
 
-sn = merge(as.data.frame(sn4_fractions),as.data.frame(sn6_fractions),by= 'Var1',all =T)
-all= merge(as.data.frame(all4_fractions),as.data.frame(all6_fractions),by= 'Var1',all =T)
+  if(level == 'most_probable_cell_type') final_summary[[1]] = sn_all
+  if(level == 'ann_level_1_mpct') final_summary[[2]] = sn_all
+  }
 
-sn_all = merge(sn,all,by = 'Var1',all = T)
-sn_all = sn_all[order(sn_all$Var1),]
-colnames(sn_all) = c('LungCellTypes','Single nuclei - P4','Single nuclei - P6','Single cells - P4','Single cells - P6')
-sn_all$LungCellTypes = as.character(sn_all$LungCellTypes)
-sn_all[nrow(sn_all)+1,] = list('Total number of cells',sum(sn4),sum(sn6),sum(all4),sum(all6))
+datatable(final_summary[[1]],caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Types (fraction of total)"), style="color:darkred"))
+  
+datatable(final_summary[[2]],caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Types (fraction of total)"), style="color:darkred"))
 
-datatable(sn_all,caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Types (fraction of total)"), style="color:darkred"))
+
 ```
 
 
@@ -176,9 +199,11 @@ adeno.combined.sct <- RunUMAP(adeno.combined.sct, reduction = "pca", dims = 1:np
 
 
 p1 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "samplename")
-p2 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "method", cols = 'Set1')
+p2 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "method",cols=c('darkblue','yellow'))
+p3 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "ann_level_1_mpct", cols = 'Set1') + ggtitle("Cell Type Annotation (coarse)")
 p1
 p2
+p3
 ```
 
 # Optimal number of clusters
@@ -188,10 +213,9 @@ resolution = 0.5
 message(paste0('Cluster resolution parameter is set at ',resolution))
 adeno.combined.sct <- FindNeighbors(adeno.combined.sct, reduction = "pca", dims = 1:30)
 adeno.combined.sct <- FindClusters(adeno.combined.sct, resolution = resolution)
-p3 = DimPlot(adeno.combined.sct, reduction = "umap",label = T,group.by =  'integrated_snn_res.0.5') + theme(legend.position = "none")
+p4 = DimPlot(adeno.combined.sct, reduction = "umap",label = T,group.by =  'integrated_snn_res.0.5') + theme(legend.position = "none")
 
-
-p3
+p4
 ```
 
 
@@ -208,7 +232,7 @@ p3
 
 #summarise, removing unknown assignments...
 ct_summarised <- adeno.combined.sct@meta.data %>%
-  group_by(most_probable_cell_type,integrated_snn_res.0.5,.drop=F) %>% 
+  group_by(most_probable_cell_type,integrated_snn_res.0.5,ann_level_1_mpct,.drop=F) %>% 
   summarise(n = length(integrated_snn_res.0.5),.groups='keep')
 #%>% filter(most_probable_cell_type!='unknown')
 
@@ -225,29 +249,38 @@ ct_summarised_ALL <- adeno.combined.sct@meta.data %>%
   filter(n>100) %>% filter(most_probable_cell_type!='unknown')
 
 
-plot_SN = ggplot(data=ct_summarised_SN, aes(y=n, x=integrated_snn_res.0.5, fill = most_probable_cell_type)) + 
+p5_SN = ggplot(data=ct_summarised_SN, aes(y=n, x=integrated_snn_res.0.5, fill = most_probable_cell_type)) + 
     geom_bar(stat="identity") + 
     labs(title= "Most representatives Single Nuclei clusters",y = "Nb of cells", x = "cell clusters") + 
     scale_x_discrete(guide = guide_axis(angle = 90)) +
     guides(fill = guide_legend(nrow = 20)) + scale_fill_brewer(palette="Set1")
 
-plot_ALL = ggplot(data=ct_summarised_ALL, aes(y=n, x=integrated_snn_res.0.5, fill = most_probable_cell_type)) + 
+p6_ALL = ggplot(data=ct_summarised_ALL, aes(y=n, x=integrated_snn_res.0.5, fill = most_probable_cell_type)) + 
     geom_bar(stat="identity") + 
     labs(title= "Most representatives Single Cells clusters",y = "Nb of cells", x = "cell clusters") + 
     scale_x_discrete(guide = guide_axis(angle = 90)) +
     guides(fill = guide_legend(nrow = 20))  + scale_fill_brewer(palette="Set3")
 
-plot_ALL + plot_SN 
+p6_ALL + p5_SN 
 ```
 
 
 # Cell type annotations: datatable  
 ```{r cell types DT,echo=F}
-ct_summarised_DT = xtabs(n ~ ., ct_summarised,sparse = F)
-ct_summarised_DT_matrix = matrix(as.vector(ct_summarised_DT),nrow = nrow(ct_summarised_DT), ncol = ncol(ct_summarised_DT))
-colnames(ct_summarised_DT_matrix) = paste0('cluster',colnames(ct_summarised_DT));rownames(ct_summarised_DT_matrix) = rownames(ct_summarised_DT)
+celltype_finest_DT = xtabs(n ~ most_probable_cell_type+integrated_snn_res.0.5, ct_summarised,sparse = F)
+celltype_finest_DT_matrix = matrix(as.vector(celltype_finest_DT),nrow = nrow(celltype_finest_DT), ncol = ncol(celltype_finest_DT))
+colnames(celltype_finest_DT_matrix) = paste0('cluster',colnames(celltype_finest_DT));rownames(celltype_finest_DT_matrix) = rownames(celltype_finest_DT)
 
-datatable(ct_summarised_DT_matrix,caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Type Annotations per cluster"), style="color:darkred"))
+datatable(celltype_finest_DT_matrix,caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Type Annotations per cluster"), style="color:darkred"))
+
+
+###
+celltype_level1_DT = xtabs(n ~ ann_level_1_mpct+integrated_snn_res.0.5, ct_summarised,sparse = F)
+celltype_level1_DT_matrix = matrix(as.vector(celltype_level1_DT),nrow = nrow(celltype_level1_DT), ncol = ncol(celltype_level1_DT))
+colnames(celltype_level1_DT_matrix) = paste0('cluster',colnames(celltype_level1_DT));rownames(celltype_level1_DT_matrix) = rownames(celltype_level1_DT)
+
+datatable(celltype_level1_DT_matrix,caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Type Annotations per cluster"), style="color:darkred"))
+
 ```
 
 # Top DEGs, comparing clusters
