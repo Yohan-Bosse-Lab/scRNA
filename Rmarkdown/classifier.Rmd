@@ -67,6 +67,9 @@ hlca@meta.data$ann_finest_level_recoded = gsub("φ","phi",hlca@meta.data$ann_fin
 hlca@meta.data$ann_finest_level_recoded = gsub("+","plus",hlca@meta.data$ann_finest_level_recoded,fixed = T)
 hlca@meta.data$ann_finest_level_recoded = as.factor(hlca@meta.data$ann_finest_level_recoded)
 
+hlca@meta.data$ann_level_2_recoded = gsub(" ","_",hlca@meta.data$ann_level_2,fixed = T)
+hlca@meta.data$ann_level_2_recoded = as.factor(hlca@meta.data$ann_level_2_recoded)
+
 colnames(markers_genes) = gsub("-","_",colnames(markers_genes), fixed = T)
 colnames(markers_genes) = gsub(" (","_",colnames(markers_genes), fixed = T)
 colnames(markers_genes) = gsub(" ","_",colnames(markers_genes), fixed = T)
@@ -83,18 +86,18 @@ colnames(markers_genes) = gsub("φ","phi",colnames(markers_genes))
 
 #split data
 set.seed(123)
-train = sample(1:584884,2000)
-test = sample(c(1:584884)[-train],10000)
+train = sample(1:584884,100000)
+test = sample(c(1:584884)[-train],20000)
 
 train_set <- hlca[, train]
 test_set <- hlca[, test]
 
 
 #Ensembl to HGNC symbols conversion
-train_set@assays$RNA@counts@Dimnames[[1]] = as.character(train_set@assays$RNA@meta.features$feature_name)
-train_set@assays$RNA@data@Dimnames[[1]] =   as.character(train_set@assays$RNA@meta.features$feature_name)
-test_set@assays$RNA@counts@Dimnames[[1]] =  as.character(test_set@assays$RNA@meta.features$feature_name)
-test_set@assays$RNA@data@Dimnames[[1]] =    as.character(test_set@assays$RNA@meta.features$feature_name)
+train_set@assays$RNA@counts@Dimnames[[1]] = gsub('_','-',as.character(train_set@assays$RNA@meta.features$feature_name),fixed = T)
+train_set@assays$RNA@data@Dimnames[[1]] =   gsub('_','-',as.character(train_set@assays$RNA@meta.features$feature_name),fixed = T)
+test_set@assays$RNA@counts@Dimnames[[1]] =  gsub('_','-',as.character(test_set@assays$RNA@meta.features$feature_name),fixed = T)
+test_set@assays$RNA@data@Dimnames[[1]] =    gsub('_','-',as.character(test_set@assays$RNA@meta.features$feature_name),fixed = T)
 
 #
 table(train_set@meta.data$ann_finest_level_recoded)
@@ -107,6 +110,7 @@ classifiers= list()
 number=58
 for(i in seq_along(markers_genes))
   {
+
   #train classifiers with a tryCatch error / warning failures
    temp = tryCatch(train_classifier(train_obj = train_set,
                         assay = 'RNA',
@@ -129,7 +133,7 @@ for(i in seq_along(markers_genes))
   
   model_filepath = paste0('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/models/')
   
-  if(class(classifiers[[i]])=='scAnnotatR') save_new_model(new_model = classifiers[[i]], path_to_models = model_filepath, include.default = FALSE) 
+# if(class(classifiers[[i]])=='scAnnotatR') save_new_model(new_model = classifiers[[i]], path_to_models = model_filepath, include.default = FALSE) 
   
   }
 
@@ -150,27 +154,82 @@ for(i in 1:length(classifiers_trimed)){
 
 #classify
 classified_cells <- classify_cells(classify_obj = test_set,classifiers = classifiers_trimed, assay = 'RNA', slot = 'counts')
+classified_cells@meta.data$most_probable_cell_type = gsub(' ','_',classified_cells@meta.data$most_probable_cell_type)
+
 ```
 
-# More stats
+
+# Predictions
+  * Note that I have removed the unknown predictions.
+```{r DT prepare matching file,eval = T}
+if(file.exists('../data/HLCA/cell_types_matches.csv')==F){
+  ###########predictions
+  hlca = readRDS('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/hlca_dataset_587k_cells.rds')
+
+  matches = hlca@meta.data[,colnames(hlca@meta.data) %in% c('ann_level_1','ann_level_2','ann_level_3','ann_level_4','ann_level_5','ann_finest_level_recoded')]
+  matches = matches %>% distinct() %>% arrange(ann_level_1,ann_level_2,ann_level_3,ann_level_4,ann_level_5)
+  matches$ann_finest_level_recoded = gsub('_',' ',matches$ann_finest_level_recoded)
+  write.csv(matches,'../data/HLCA/cell_types_matches.csv',row.names = F)
+}
+
+matches = read.csv('../data/HLCA/cell_types_matches.csv')
+
+```
+
+
+
+
+# Let's investigate how well we did.
 ```{r, double check}
-#check again
-predictions = data.frame(mpct = classified_cells@meta.data$most_probable_cell_type,ann= classified_cells@meta.data$ann_finest_level_recoded)
-predictions$mpct = gsub(' ','_',predictions$mpct)
-predictions$accuracy = predictions$mpct == predictions$ann
-length(predictions[predictions$accuracy,1])/nrow(predictions)
-
-final = table(predictions$ann,predictions$accuracy)
-final = data.frame(true = final[,2],
-                   false= final[,1],
-                   true_prop = signif(final[,2]/rowSums(final)*100,4),
-                   false_prop = signif(final[,1]/rowSums(final)*100,4) )
-
-#check a few predictions manually
-sum(predictions[predictions$ann=='AT1',3])/length(predictions[predictions$ann=='AT1',3])
-sum(predictions[predictions$ann=='AT2',3])/length(predictions[predictions$ann=='AT2',3])
-sum(predictions[predictions$ann=='B_cells',3])/length(predictions[predictions$ann=='B_cells',3])
-sum(predictions[predictions$ann=='Suprabasal',3])/length(predictions[predictions$ann=='Suprabasal',3])
+###matching the prediction (most_probable_cell_type) with Level 2 (ann_level_1) to see how good predictions are based on a higher hierarchical Cell Type Level also.
+###
+classified_cells@meta.data$ann_level_1_mpct  = 'unknown'
+for(i in seq_along(classified_cells@meta.data$ann_level_1_mpct))
+{
+  temp_match = matches$ann_finest_level_recoded == classified_cells@meta.data$most_probable_cell_type[i]
+  if(length(temp_match[temp_match]) ==1) classified_cells@meta.data$ann_level_1_mpct[i] = matches$ann_level_1[temp_match] 
+}
 ```
+
+
+# Predictions
+  * Note that I have removed the unknown predictions.
+```{r DT predictions}
+###########predictions
+predictions = classified_cells@meta.data[,colnames(classified_cells@meta.data) %in% c('ann_level_1','ann_finest_level_recoded','ann_level_1_mpct','most_probable_cell_type')]
+
+
+message(paste0('Number of unknowns: ',length(predictions[predictions$most_probable_cell_type== 'unknown',1])))
+
+predictions = predictions[predictions$most_probable_cell_type!= 'unknown',]
+predictions$accuracy_finest_level = predictions$most_probable_cell_type == predictions$ann_finest_level_recoded        
+predictions$accuracy_level1 = predictions$ann_level_1_mpct == predictions$ann_level_1
+
+message(paste0('Finest level True predictions: ',signif(length(predictions[predictions$accuracy_accuracy_finest_level,1])/nrow(predictions),4)*100,' %'))
+message(paste0('Level 1 True predictions: ',signif(length(predictions[predictions$accuracy_level1,1])/nrow(predictions),4)*100,' %'))
+
+finest = table(predictions$ann_finest_level_recoded,predictions$accuracy_finest_level)
+finest = data.frame(true = finest[,2],
+                   false= finest[,1],
+                   true_percent = signif(finest[,2]/rowSums(finest)*100,4),
+                   false_percent = signif(finest[,1]/rowSums(finest)*100,4) )
+
+level1 = table(predictions$ann_level_1,predictions$accuracy_level1)
+level1 = data.frame(true = level1[,2],
+                   false= level1[,1],
+                  true_percent = signif(level1[,2]/rowSums(level1)*100,4),
+                   false_percent = signif(level1[,1]/rowSums(level1)*100,4) )
+
+
+datatable(finest,caption = htmltools::tags$caption(htmltools::strong("Finest Level Predictions"), style="color:darkred"), options = list(dom = 't'))
+
+datatable(level2,caption = htmltools::tags$caption(htmltools::strong("Level 2 Predictions"), style="color:darkred"), options = list(dom = 't'))
+
+
+```
+
+
+
+
 
 
