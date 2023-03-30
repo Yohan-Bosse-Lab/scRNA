@@ -42,11 +42,16 @@ library(Seurat) #scRNA analyses
 library(sctransform) #data normalization
 library(scater) #outlier values predictions
 library(scAnnotatR) #cell type annotation (devtools::install_github('grisslab/scAnnotatR'))
+library(DoubletFinder) #find doublets? 
+
+library(vegan) #diversity indices
 
 library(dplyr) #data handling
 library(patchwork) #data viz
 library(ggplot2) #data viz
 library(DT) #data viz
+
+source('../R/doubletfinder.R')
 
 ```
 
@@ -62,10 +67,11 @@ filenames
 ```
 
 
-```{r qc,message  = F, fig.width = 11, fig.height=8,echo=F, timehook = TRUE}  
+```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F, timehook = TRUE}  
 #create seurat objects
 seurat.objects = list()
 l = length(filepaths)
+
 #create filters objects
 QC_filters=data.frame(nCount_min=rep(0,l),nCount_max=rep(0,l),
                     nFeature_RNA_min=rep(0,l),nFeature_RNA_min=rep(0,l),
@@ -73,7 +79,7 @@ QC_filters=data.frame(nCount_min=rep(0,l),nCount_max=rep(0,l),
 
 
 for(i in 1:length(filenames)) {
-#for(i in 1:4) {
+#for(i in 1:1) {
   # Read 10x data
   cts <- Read10X(data.dir = filepaths[i])
   seurat.objects[[i]] = CreateSeuratObject(counts = cts)
@@ -91,7 +97,7 @@ for(i in 1:length(filenames)) {
   temp = strsplit(filenames[i],split = '_')[[1]]
   meta = c(filenames[i],temp[2],ifelse(regexpr('CST',temp[1])>0,'normal','tumor'),strsplit(temp[1],fixed = T,'-')[[1]][2])
   seurat.objects[[i]]@meta.data$samplename = temp[1]
-  seurat.objects[[i]]@meta.data$method = temp[2]
+  seurat.objects[[i]]@meta.data$method = ifelse(temp[2]=='SN',temp[2],'SC')
   seurat.objects[[i]]@meta.data$type = ifelse(regexpr('CST',temp[1])>0,'normal','tumor')
   seurat.objects[[i]]@meta.data$patient = ifelse(regexpr('301',temp[1])>0,'P4','P6')
   
@@ -117,8 +123,8 @@ for(i in 1:length(filenames)) {
           temp_match = matches$ann_finest_level_recoded == seurat.objects[[i]]@meta.data$most_probable_cell_type[j]
           if(length(temp_match[temp_match]) == 1) seurat.objects[[i]]@meta.data$ann_level_1_mpct[j] = matches$ann_level_1[temp_match] 
         }
-    }
-  
+  }
+ 
   if(class(temp)=='try-error') {print(temp)}
   
   print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (subsetting, classification, normalisation)'))
@@ -128,6 +134,26 @@ names(seurat.objects) =  filenames
 
 print(seurat.objects)
 ```
+
+
+# Doublet Finder
+  * find and remove doublet (assuming a 5% doublet rate).
+```{r doublet finder, echo=T, message=FALSE, warning=FALSE,include = FALSE, timehook=T}
+#precomputed pk's for doubletfinder
+pK_empirical = c(0.25,0.03,0.2,0.01)
+
+for(i in 1:length(filenames)) {
+  #doublets finder
+  doubletfinder.out = doubletfinder_wrapper(seurat.objects[[i]], pK_empirical = pK_empirical[i])
+  seurat.objects[[i]] = doubletfinder.out[[1]]
+}
+print(seurat.objects)
+```
+```{r doublet finder results, message=T}
+#precomputed pk's for doubletfinder
+print(seurat.objects)
+```
+
 
 
 # Filters defined with isOutlier()
@@ -162,16 +188,32 @@ for(level in c('most_probable_cell_type','ann_level_1_mpct'))
 
   colnames(sn_all) = c('LungCellTypes','Single nuclei - P4','Single nuclei - P6','Single cells - P4','Single cells - P6')
   sn_all$LungCellTypes = as.character(sn_all$LungCellTypes)
-  sn_all[nrow(sn_all)+1,1] = c('Total number of cells')
-  sn_all[nrow(sn_all),-1] = lapply(cell_type_summary,sum)
+#  sn_all[nrow(sn_all)+1,1] = c('Total number of cells')
+#  sn_all[nrow(sn_all),-1] = lapply(cell_type_summary,sum)
 
-  if(level == 'most_probable_cell_type') final_summary[[1]] = sn_all
+  if(level == 'most_probable_cell_type') {
+    final_summary[[1]] = sn_all;
+    
+    
+    summary_statistics = t(data.frame(`Total number of cells` = sapply(cell_type_summary,sum),
+               `Diversity (Shannon) Index` = signif(sapply(cell_type_summary,diversity),4),
+               `Number of unique cell types` = sapply(cell_type_summary,length),
+               check.names = F))
+    
+    colnames(summary_statistics) = c('Single cells - P4','Single nuclei - P4','Single cells - P6','Single nuclei - P6')
+    
+    summary_statistics = summary_statistics[,c(2,4,1,3)]
+    
+    final_summary[[3]] = summary_statistics
+  }
   if(level == 'ann_level_1_mpct') final_summary[[2]] = sn_all
   }
 
 datatable(final_summary[[1]],caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Types (fraction of total)"), style="color:darkred"))
   
 datatable(final_summary[[2]],caption = htmltools::tags$caption(htmltools::strong("Predicted Cell Types (fraction of total)"), style="color:darkred"))
+
+datatable(final_summary[[3]],caption = htmltools::tags$caption(htmltools::strong("Summary Statistics"), style="color:darkred"))
 
 
 ```
@@ -195,7 +237,7 @@ adeno.combined.sct <- IntegrateData(anchorset = adeno.anchors, normalization.met
 npc = 30
 message(paste0('Keeping the first ',npc, ' Principal Components for UMAP'))
 adeno.combined.sct <- RunPCA(adeno.combined.sct, verbose = FALSE)
-adeno.combined.sct <- RunUMAP(adeno.combined.sct, reduction = "pca", dims = 1:npc)
+adeno.combined.sct <- RunUMAP(adeno.combined.sct, reduction = "pca", dims = 1:npc, verbose = FALSE)
 
 
 p1 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "samplename")
@@ -239,15 +281,14 @@ ct_summarised <- adeno.combined.sct@meta.data %>%
 ct_summarised_SN <- adeno.combined.sct@meta.data %>%
   group_by(most_probable_cell_type,integrated_snn_res.0.5,.drop=) %>% 
   summarise(n = length(integrated_snn_res.0.5),.groups='keep') %>% 
-  filter(integrated_snn_res.0.5 == 23|integrated_snn_res.0.5 == 5|integrated_snn_res.0.5 == 10|integrated_snn_res.0.5 == 14|integrated_snn_res.0.5 == 8|integrated_snn_res.0.5 == 6) %>%
+  filter(integrated_snn_res.0.5 == 5|integrated_snn_res.0.5 == 6|integrated_snn_res.0.5 == 7|integrated_snn_res.0.5 == 8|integrated_snn_res.0.5 == 18) %>%
   filter(n>100) %>% filter(most_probable_cell_type!='unknown')
 
 ct_summarised_ALL <- adeno.combined.sct@meta.data %>%
   group_by(most_probable_cell_type,integrated_snn_res.0.5,.drop=) %>% 
   summarise(n = length(integrated_snn_res.0.5),.groups='keep') %>% 
-  filter(integrated_snn_res.0.5 == 11|integrated_snn_res.0.5 == 13|integrated_snn_res.0.5 == 2|integrated_snn_res.0.5 == 16|integrated_snn_res.0.5 == 18) %>%
+  filter(integrated_snn_res.0.5 == 2|integrated_snn_res.0.5 == 11|integrated_snn_res.0.5 == 14|integrated_snn_res.0.5 == 15|integrated_snn_res.0.5 == 16) %>%
   filter(n>100) %>% filter(most_probable_cell_type!='unknown')
-
 
 p5_SN = ggplot(data=ct_summarised_SN, aes(y=n, x=integrated_snn_res.0.5, fill = most_probable_cell_type)) + 
     geom_bar(stat="identity") + 
