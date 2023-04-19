@@ -1,0 +1,333 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+```{r, timehook,echo=F}
+knitr::knit_hooks$set(timehook = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now)
+      # return a character string to show the time
+      paste("\n\n\nTime for this code chunk to run:",signif(res,3),attr(res,'units'))
+    }
+  }
+}))
+```
+
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+#requirements
+library(ggalluvial)
+library(dplyr)
+library(ggplot2)
+library(patchwork)
+library(Seurat)
+
+library(readxl)
+```
+
+# Loading data  
+```{r loadRDS,message  = T,echo=T}  
+adeno.combined.sct =  readRDS('adeno.combined.sct.rds')
+
+#summarise your data
+data_summarised = adeno.combined.sct@meta.data %>% 
+  group_by(predicted.ann_level_1,predicted.ann_level_2,predicted.ann_level_3,predicted.ann_finest_level,method) %>%
+  summarise(n = length(predicted.ann_level_2),.groups='keep') %>% 
+  filter(n > 50)
+
+data_summarised$method = ifelse(data_summarised$method=='SN','SingleNuclei','SingleCell')
+```
+
+# Cell type annotation 
+```{r celltypes,fig.width = 13, fig.height=7,echo=F}
+# Stacked barplot with multiple groups
+high_level_colors = c(RColorBrewer::brewer.pal(n = 5, name = "Set1"))
+bargplots = list()
+bargplots[[1]] = ggplot(data=data_summarised, aes(x=method, y=n, fill=predicted.ann_level_1)) +
+  geom_bar(stat="identity") + 
+  scale_fill_manual('Cell Types',values=high_level_colors)+ 
+  ggtitle('Cell Types -- coarse annotation') + ylab("Number of Cells")
+  
+#
+celltypes = c('Endothelial','Epithelial','Immune','Stroma')
+
+for(i in seq_along((celltypes)))
+  {
+  data = data_summarised[data_summarised[,1]==celltypes[i],]
+  rgb.palette <- colorRampPalette(c('black',high_level_colors[i], "white"),space = "rgb")
+  colors = rgb.palette(length(unique(data$predicted.ann_finest_level))-1)
+  colors[length(colors)+1] = 'orange'
+
+  p = ggplot(data=data, aes(x=method, y=n, fill=predicted.ann_finest_level)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual('Cell Types',values=colors)+ 
+    ggtitle(celltypes[i])+ ylab("")
+
+  bargplots[[i+1]] = p
+}
+
+bargplots[[1]]+(bargplots[[2]]/bargplots[[3]])+(bargplots[[4]]/bargplots[[5]])
+
+#pdf('results/cell_type_annotation.pdf',width = 13,height = 7)
+#bargplots[[1]]+(bargplots[[2]]/bargplots[[3]])+(bargplots[[4]]/bargplots[[5]])
+#dev.off()
+
+```
+
+
+# Proof-Of-Concept for DEGs
+ * Not shown. A POC to show how `Seurat` looks for differentially expressed genes.  
+```{r deg POC, echo=F, message=FALSE, include=FALSE}
+# Take all cells in cluster 2, and find markers that separate cells in the 'g1' group (metadata
+# variable 'group')
+markers <- FindMarkers(pbmc_small, slot = 'data',assays = 'RNA', ident.1 = "g1", group.by = 'groups', subset.ident = "2")
+
+head(x = markers,1)
+
+g1 = pbmc_small@assays$RNA@data[,pbmc_small@meta.data$RNA_snn_res.1 == 2 & pbmc_small@meta.data$groups=='g1']
+
+g2 = pbmc_small@assays$RNA@data[,pbmc_small@meta.data$RNA_snn_res.1 ==2 & pbmc_small@meta.data$groups=='g2']
+
+g1_1 = g1[rownames(g1) == "GSTP1", ]
+g2_1 = g2[rownames(g2) == "GSTP1", ]
+pct.1 = length(g1_1[g1_1!=0])/length(g1_1)
+pct.2 = length(g2_1[g2_1!=0])/length(g2_1)
+FC = log(mean(expm1(g1_1))+1,2)-log(mean(expm1(g2_1))+1,2)
+pval = wilcox.test(g1_1,g2_1)$p.value
+
+# find markers for every cluster compared to all remaining cells, report only the positive ones
+adeno.combined.sct <- SetIdent(adeno.combined.sct, value = 'predicted.ann_finest_level')
+
+markers <- FindMarkers(adeno.combined.sct, ident.1 = "P4",ident.2 = "P6", group.by = 'patient', subset.ident = 'NK cells')
+markers1 <- FindMarkers(adeno.combined.sct, ident.1 = "SN",ident.2 = "SC", group.by = 'method', subset.ident = 'AT1')
+markers2 <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "SN",ident.2 = "SC", group.by = 'method', subset.ident = 'AT2',assay = 'integrated')
+markers3 <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "SN",ident.2 = "SC", group.by = 'method', assay = 'integrated')
+
+###PCT.1 AND PCT.2 ARE  TRUE, i now  get the Fold Change.
+PGC_rawdata = adeno.combined.sct@assays$integrated@data[rownames(adeno.combined.sct@assays$integrated@data)=='PGC',]
+PGC_rawdata_AT2_SN = PGC_rawdata[adeno.combined.sct@meta.data$predicted.ann_finest_level=='AT2' & adeno.combined.sct@meta.data$method=='SN']
+PGC_rawdata_AT2_SC = PGC_rawdata[adeno.combined.sct@meta.data$predicted.ann_finest_level=='AT2' & adeno.combined.sct@meta.data$method=='SC']
+
+#FindMarkers statistics
+markers2[rownames(markers2)=='PGC',]
+
+#hand calculation
+length(PGC_rawdata_AT2_SC[PGC_rawdata_AT2_SC>0])/length(PGC_rawdata_AT2_SC) 
+length(PGC_rawdata_AT2_SN[PGC_rawdata_AT2_SN>0])/length(PGC_rawdata_AT2_SN) 
+
+#scale.data
+log(mean((PGC_rawdata_AT2_SN))+1,2)-log(mean((PGC_rawdata_AT2_SC))+1,2)
+
+#if data
+log(mean(expm1(PGC_rawdata_AT2_SN))+1,2)-log(mean(expm1(PGC_rawdata_AT2_SC))+1,2)
+
+```
+
+
+
+
+# DEGs  
+We can notice five things:   
+1. In the 1st panel, we can see that the expression in centered around zero, which means that the __gene * cell__ matrix is very sparse.  
+2. In the 1st panel, AT1 and AT2 marker genes (used to identify them as AT1/AT2 cells, as defined by **HLCA**) have overall low expression.  
+3. In the second panel, we can notice that, in AT1 cells specifically, the expression of marker genes (as defined by *HLCA*) is very high. While this is true in Single Nuclei, it is even higher in Single Cells.  
+4. In the second panel, we also notice that, in AT1 cells, the overall expression of genes is higher than in all cells, both in Single Cells and Single Nuclei. While this is true in Single Nuclei, it is even higher in Single Cells.  
+5. Patterns *3* and *4* are the same for AT2 cells.  
+```{r degs,fig.width = 11, fig.height=5, echo=F}
+markers = read.csv('marker_genes_April2023.txt',header = F,row.names = 1)
+
+output = data.frame()
+
+for(i in c(3,12)){
+  meta = adeno.combined.sct@meta.data
+  alldata = adeno.combined.sct@assays$integrated@scale.data
+  
+  celltypeX_SN = alldata[,meta$method == 'SN' & meta$predicted.ann_finest_level == rownames(markers)[i]]
+  celltypeX_SC = alldata[,meta$method == 'SC' & meta$predicted.ann_finest_level == rownames(markers)[i]]
+  
+  celltypeX_SN_markers = celltypeX_SN[rownames(celltypeX_SN) %in% markers[i,],]
+  celltypeX_SN_nonmarkers = celltypeX_SN[!(rownames(celltypeX_SN) %in% markers[i,]),]
+  
+  celltypeX_SC_markers = celltypeX_SC[rownames(celltypeX_SC) %in% markers[i,],]
+  celltypeX_SC_nonmarkers = celltypeX_SC[!(rownames(celltypeX_SC) %in% markers[i,]),]
+  
+  output_temp = data.frame(expression = c(as.vector(celltypeX_SN_markers),
+                   as.vector(celltypeX_SN_nonmarkers),
+                   as.vector(celltypeX_SC_markers),
+                   as.vector(celltypeX_SC_nonmarkers)))
+  
+  output_temp$method = c(rep('Single Nuclei',length(as.vector(celltypeX_SN_markers))),
+                          rep('Single Nuclei',length(as.vector(celltypeX_SN_nonmarkers))),
+                          rep('Single Cell',length(as.vector(celltypeX_SC_markers))),
+                          rep('Single Cell',length(as.vector(celltypeX_SC_nonmarkers)))
+                          ) 
+  
+  output_temp$categories = c(rep('marker genes',length(as.vector(celltypeX_SN_markers))),
+                          rep('non-marker genes',length(as.vector(celltypeX_SN_nonmarkers))),
+                          rep('marker genes',length(as.vector(celltypeX_SC_markers))),
+                          rep('non-marker genes',length(as.vector(celltypeX_SC_nonmarkers)))
+                          )
+  
+  output_temp$predicted.ann_finest_level = paste0(rownames(markers)[i], ' cells')
+  
+  output_temp = output_temp[output_temp$expression>0,]
+  
+  output = rbind(output,output_temp)
+  
+  if(i ==12) {
+  SN = alldata[,meta$method == 'SN']
+  SC = alldata[,meta$method == 'SC']
+  
+  celltypeX_SN_markers_at2 = SN[rownames(SN) %in% markers[3,],]
+  celltypeX_SN_markers_at1 = SN[rownames(SN) %in% markers[12,],]
+
+  celltypeX_SC_markers_at1 = SC[rownames(SC) %in% markers[12,],]
+  celltypeX_SC_markers_at2 = SC[rownames(SC) %in% markers[3,],]
+
+  output_temp = data.frame(expression = c(as.vector(celltypeX_SN_markers_at2),
+                                          as.vector(celltypeX_SN_markers_at1),
+                                          as.vector(SN),
+                                          as.vector(celltypeX_SC_markers_at2),
+                                          as.vector(celltypeX_SC_markers_at1),
+                                          as.vector(SC)),
+                                          
+                           
+                             method=c(rep('Single Nuclei',length(as.vector(celltypeX_SN_markers_at2))),
+                                      rep('Single Nuclei',length(as.vector(celltypeX_SN_markers_at1))),
+                                      rep('Single Nuclei',length(as.vector(SN))),
+                                      rep('Single Cell',length(as.vector(celltypeX_SC_markers_at2))),
+                                      rep('Single Cell',length(as.vector(celltypeX_SC_markers_at1))),
+                                      rep('Single Cell',length(as.vector(SC)))),
+                           
+                           
+                             categories=c(rep('AT2 marker genes',length(as.vector(celltypeX_SN_markers_at2))),
+                                      rep('AT1 marker genes',length(as.vector(celltypeX_SN_markers_at1))),
+                                      rep('All genes',length(as.vector(SN))),
+                                      rep('AT2 marker genes',length(as.vector(celltypeX_SC_markers_at2))),
+                                      rep('AT1 marker genes',length(as.vector(celltypeX_SC_markers_at1))),
+                                      rep('All genes',length(as.vector(SC)))),
+                           
+                             predicted.ann_finest_level = 'all cells')
+    
+    output_temp = output_temp[sample(1:40000000,5000000),]
+    output = rbind(output,output_temp)
+  }
+  
+}
+
+###plot
+violon_plots = ggplot(output, aes(x=categories, y=expression, fill=method)) +
+  geom_violin(trim=FALSE,position="dodge") +
+  ylab("Normalised gene expression") +
+  facet_wrap(~predicted.ann_finest_level,nrow = 1, ncol = 5, scales = "free_x")
+###
+
+violon_plots
+
+
+pdf('../results/violon_plots.pdf',width = 13,height = 7)
+violon_plots
+dev.off()
+
+```
+
+# DEGs -- part2
+We can notice four things:  
+1. In the first (top left) panel, there are hundreds of genes differentially expressed (DEGs) between Single Nuclei and Single Cells.  
+2. In the second panel (top right), we can see that, overall, genes are more expressed in Single Cells (negative values), but these mean differences are hard to interpret because they are *SCT* normalized data from a sparse matrix.  
+3. In the third panel (bottom left), overall DEGS are expressed in ~13% of the cells for Single cells vs ~25% for Single Nuclei.  
+4. However, as expected, AT1 & AT2 marker genes are expressed in a very large fraction of AT1 and AT2 cells. All other DEGs are expressed in a slightly larger fractions of AT1 and AT2 specific cells than all cells combined.   
+   
+```{r degs part2,eval=T,fig.width = 13, fig.height=7,echo=F,message =F}
+adeno.combined.sct <- SetIdent(adeno.combined.sct, value = 'predicted.ann_finest_level')
+
+deg_at1 <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "SN",ident.2 = "SC", group.by = 'method', subset.ident = 'AT1',assay = 'integrated')
+deg_at1 = deg_at1[deg_at1$p_val_adj<0.05,]
+deg_at1$categories = 'non-marker genes'
+deg_at1$categories[rownames(deg_at1) %in% unlist(markers[c(12),])] = 'marker genes'
+
+deg_at2 <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "SN",ident.2 = "SC", group.by = 'method', subset.ident = 'AT2',assay = 'integrated')
+deg_at2 = deg_at2[deg_at2$p_val_adj<0.05,]
+deg_at2$categories = 'non-marker genes'
+deg_at2$categories[rownames(deg_at2) %in% unlist(markers[c(3),])] = 'marker genes'
+
+deg_all <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "SN",ident.2 = "SC", group.by = 'method', assay = 'integrated')
+deg_all = deg_all[deg_all$p_val_adj<0.05,]
+deg_all$categories = 'all'
+
+deg = data.frame(rbind(deg_all,deg_at1,deg_at2),predicted.ann_finest_level = c(rep('All cells',nrow(deg_all)),rep('AT2 cells',nrow(deg_at1)),rep('AT1 cells',nrow(deg_at2))))
+
+#summarise your data
+data_summarised = deg %>% 
+  group_by(categories,predicted.ann_finest_level) %>%
+  summarise(n = length(predicted.ann_finest_level),
+            mean_SC = mean(pct.2),
+            mean_SN = mean(pct.1),
+            avg_diff = mean(avg_diff),.groups='keep')
+
+#add a single pct column
+nrows = nrow(data_summarised)
+data_summarised = rbind(data_summarised,data_summarised)
+data_summarised$mean_SC = c(data_summarised$mean_SC[1:nrows],data_summarised$mean_SN[1:nrows])
+data_summarised$mean_SN = c(rep('Single Cells',nrows),rep('Single Nuclei',nrows))
+data_summarised$n[(nrows+1):nrow(data_summarised)] = 0
+data_summarised$avg_diff[(nrows+1):nrow(data_summarised)] = 0
+colnames(data_summarised)[4] = 'pct' 
+colnames(data_summarised)[5] = 'method'
+data_summarised$categories2 = data_summarised$categories
+
+data_summarised$categories2[c(1,6)] = 'all DEGs (1567 genes)' 
+data_summarised$categories2[c(2,7)] = 'markers (7 DEGs)' 
+data_summarised$categories2[c(3,8)] = 'markers (9 DEGs)' 
+data_summarised$categories2[c(4,9)] = 'non-markers DEGs\n(693 genes)'  
+data_summarised$categories2[c(5,10)] = 'non-markers DEGs\n(1142 genes)'  
+ 
+p_nb_deg = ggplot(data=data_summarised, aes(x=predicted.ann_finest_level, y=n)) +
+    geom_bar(stat="identity") +
+    ggtitle('Number of Differentially Expressed Genes (DEGs)\n(Single Nuclei vs Single Cells)') +
+  ylab("Number of Genes") + 
+  xlab("")
+
+p_avg_diff =ggplot(deg, aes(x=predicted.ann_finest_level, y=avg_diff,fill = categories)) + 
+  geom_boxplot(position=position_dodge(1)) +
+  ggtitle('Mean difference in normalized expression\n(Single Nuclei - Single Cells)') + 
+  ylab("Mean difference") + 
+  xlab("")
+
+p_pct = ggplot(data=data_summarised, aes(x=categories2, y=pct, fill= method)) +
+    geom_bar(stat="identity", position=position_dodge()) +
+    ggtitle('Mean fraction of cells expressing a DEG') + 
+  facet_wrap(~predicted.ann_finest_level,nrow = 1, ncol = 3, scales = "free_x") +
+  ylab("Percentage") +
+  xlab("Cell Types")
+
+#plot
+(p_nb_deg + p_avg_diff) / p_pct 
+
+
+pdf('../results/DEG.pdf',width = 13,height = 7)
+(p_nb_deg + p_avg_diff) / p_pct 
+dev.off()
+
+
+```
+
+

@@ -8,6 +8,7 @@ output:
 params:
   datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
   outputpath: '../..' 
+  v2: TRUE
 ---
 
 # Introduction  
@@ -53,7 +54,22 @@ library(DT)
 # Data preparation 
 ```{r, dataprep, timehook = TRUE}
 hlca = readRDS('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/hlca_dataset_587k_cells.rds')
+
+
+if(params$v2 == TRUE) {
+  markers_genes_azimuth = read.csv('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/Marker_genes_Azimuth.csv',row.names = 1,check.names = F)
+
+  markers_genes =  data.frame(t(markers_genes_azimuth))
+  colnames(markers_genes) = rownames(markers_genes_azimuth)
+
+  for(m in seq_along(markers_genes)){
+    split_genes = strsplit(markers_genes[,m],split = ', ')[[1]]
+    markers_genes[1:length(split_genes),m] = split_genes
+  }
+} else {
 markers_genes = read.csv('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/Marker_genes.csv',row.names = 1,check.names = F)
+}
+
 ```
 
 # Make syntactically valid names
@@ -87,7 +103,7 @@ colnames(markers_genes) = gsub("φ","phi",colnames(markers_genes))
 #split data
 set.seed(123)
 train = sample(1:584884,100000)
-test = sample(c(1:584884)[-train],20000)
+test = sample(c(1:584884)[-train],40000)
 
 train_set <- hlca[, train]
 test_set <- hlca[, test]
@@ -101,6 +117,7 @@ test_set@assays$RNA@data@Dimnames[[1]] =    gsub('_','-',as.character(test_set@a
 
 #
 table(train_set@meta.data$ann_finest_level_recoded)
+table(test_set@meta.data$ann_finest_level_recoded)
 ```
 
 
@@ -129,12 +146,11 @@ for(i in seq_along(markers_genes))
   if((class(temp)[1] == "simpleWarning")) {classifiers[[i]] = 'warning';print(paste0('warning --- ',i))} 
   if(class(temp)[1] == "scAnnotatR") classifiers[[i]] = temp
   
-  if(i%%5==0) print(paste0(Sys.time()," --- ",i, ' of ',number))
+  if(i%%1==0) print(paste0(Sys.time()," --- ",i, ' of ',number))
   
-  model_filepath = paste0('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/models/')
+  model_filepath = paste0('C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/models_azimuth/')
   
-# if(class(classifiers[[i]])=='scAnnotatR') save_new_model(new_model = classifiers[[i]], path_to_models = model_filepath, include.default = FALSE) 
-  
+  if(class(classifiers[[i]])=='scAnnotatR') save_new_model(new_model = classifiers[[i]], path_to_models = model_filepath, include.default = FALSE)
   }
 
 classifiers_trimed = classifiers[unlist(lapply(classifiers,class))=='scAnnotatR']
@@ -154,7 +170,7 @@ for(i in 1:length(classifiers_trimed)){
 
 #classify
 classified_cells <- classify_cells(classify_obj = test_set,classifiers = classifiers_trimed, assay = 'RNA', slot = 'counts')
-classified_cells@meta.data$most_probable_cell_type = gsub(' ','_',classified_cells@meta.data$most_probable_cell_type)
+#classified_cells@meta.data$most_probable_cell_type = gsub(' ','_',classified_cells@meta.data$most_probable_cell_type)
 
 ```
 
@@ -221,9 +237,9 @@ level1 = data.frame(true = level1[,2],
                    false_percent = signif(level1[,1]/rowSums(level1)*100,4) )
 
 
-datatable(finest,caption = htmltools::tags$caption(htmltools::strong("Finest Level Predictions"), style="color:darkred"), options = list(dom = 't'))
+datatable(finest,caption = htmltools::tags$caption(htmltools::strong("Finest Level Predictions"), style="color:darkred"))
 
-datatable(level2,caption = htmltools::tags$caption(htmltools::strong("Level 2 Predictions"), style="color:darkred"), options = list(dom = 't'))
+datatable(level1,caption = htmltools::tags$caption(htmltools::strong("Level 1 Predictions"), style="color:darkred"))
 
 
 ```
