@@ -1,0 +1,127 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+* This are plots for cell type annotations
+  
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(sctransform) #data normalization
+library(scater) #outlier values predictions
+library(scAnnotatR) #cell type annotation (devtools::install_github('grisslab/scAnnotatR'))
+library(DoubletFinder) #find doublets? 
+
+library(vegan) #diversity indices
+
+library(dplyr) #data handling
+library(tidyr)
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+source('../R/doubletfinder.R')
+source('../R/azimuth_analysis.R')
+```
+
+# Loading data  
+```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
+seurat.objects =readRDS(file.path(params$datapath,"adeno.12samples.rds"))
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+
+metadata = data.frame()
+for(i in 1:12)
+{
+  if(i>1) colnames(metadata) = colnames(seurat.objects[[i]]@meta.data) 
+  metadata = rbind(metadata,seurat.objects[[i]]@meta.data)
+}
+
+metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
+
+nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
+```
+
+
+
+# Tumor - normal lineplots
+```{r lineplots}
+data_summarised = metadata %>% 
+  group_by(predicted.ann_level_1,predicted.ann_finest_level,method,type, patient,unique) %>%
+  summarise(n = length(predicted.ann_finest_level),.groups='keep')
+
+data_summarised$fraction = 0
+
+data_summarised = data_summarised[data_summarised$predicted.ann_level_1=='Epithelial',]
+
+for(i in seq_along(nb_cells_per_sample[,1])){
+  data_summarised$fraction[data_summarised$unique == nb_cells_per_sample$Var1[i]] =  data_summarised$n[data_summarised$unique == nb_cells_per_sample$Var1[i]] / nb_cells_per_sample$Freq[i]*100
+}
+
+data_summarised_fraction =  data_summarised %>% 
+  group_by(predicted.ann_level_1,predicted.ann_finest_level,method,type) %>%
+  summarise(fraction = mean(fraction),.groups='keep')
+
+#make sure the currently present catego have 0 when not present.
+fine_catego = unique(data_summarised_fraction$predicted.ann_finest_level)
+for(i in seq_along(fine_catego)){
+  temp = data_summarised_fraction[data_summarised_fraction$predicted.ann_finest_level== fine_catego[i],]
+  
+   if(nrow(temp[temp$method== 'Single Cells' & temp$type== 'Normal',])==0) data_summarised_fraction= data_summarised_fraction %>% bind_rows(data.frame(predicted.ann_level_1='Epithelial',predicted.ann_finest_level=fine_catego[i],method = 'Single Cells',type = 'Normal',fraction=0))
+   
+  if(nrow(temp[temp$method== 'Single Cells' & temp$type== 'Tumor',])==0) data_summarised_fraction= data_summarised_fraction %>% bind_rows(data.frame(predicted.ann_level_1='Epithelial',predicted.ann_finest_level=fine_catego[i],method = 'Single Cells',type = 'Tumor',fraction=0))
+    
+  if(nrow(temp[temp$method== 'Single Nuclei' & temp$type== 'Normal',])==0) data_summarised_fraction= data_summarised_fraction %>% bind_rows(data.frame(predicted.ann_level_1='Epithelial',predicted.ann_finest_level=fine_catego[i],method = 'Single Nuclei',type = 'Normal',fraction=0))
+     
+  if(nrow(temp[temp$method== 'Single Nuclei' & temp$type== 'Tumor',])==0) data_summarised_fraction= data_summarised_fraction %>% bind_rows(data.frame(predicted.ann_level_1='Epithelial',predicted.ann_finest_level=fine_catego[i],method = 'Single Nuclei',type = 'Tumor',fraction=0))
+      
+  if(nrow(temp[temp$method== 'Single Cells (depletion)' & temp$type== 'Normal',])==0) data_summarised_fraction= data_summarised_fraction %>% bind_rows(data.frame(predicted.ann_level_1='Epithelial',predicted.ann_finest_level=fine_catego[i],method = 'Single Cells (depletion)',type = 'Normal',fraction=0))
+       
+  if(nrow(temp[temp$method== 'Single Cells (depletion)' & temp$type== 'Tumor',])==0) data_summarised_fraction= data_summarised_fraction %>% bind_rows(data.frame(predicted.ann_level_1='Epithelial',predicted.ann_finest_level=fine_catego[i],method = 'Single Cells (depletion)',type = 'Tumor',fraction=0))
+}
+
+
+#remove non-informative samples
+data_summarised_fraction = data_summarised_fraction[data_summarised_fraction$predicted.ann_finest_level!='Neuroendocrine',]
+data_summarised_fraction = data_summarised_fraction[data_summarised_fraction$predicted.ann_finest_level!='SMG serous (bronchial)',]
+data_summarised_fraction = data_summarised_fraction[data_summarised_fraction$predicted.ann_finest_level!='Suprabasal',]
+data_summarised_fraction = data_summarised_fraction[data_summarised_fraction$method!='Single Cells (depletion)',]
+
+
+
+#plot
+lineplots <-ggplot(data_summarised_fraction, aes(x=type, y=fraction, group=method)) +
+  geom_line(aes(color=method))+
+  geom_point(aes(color=method)) + 
+  facet_wrap(~predicted.ann_finest_level,nrow = 4, ncol = 4, scales = "free_y") +
+  ggtitle('Epithelial cells - Cell type transition from Normal -> Tumor') + 
+  ylab("Percentage of total") +
+  xlab("Tissue type")
+  
+pdf(file.path(params$datapath,paste0('../results/Figure4_epithelial_cells.pdf')),width = 10,height = 6)
+lineplots
+dev.off()
+```
+
+
+# session info  
+```{r session, message= T}
+###session
+sessionInfo()
+```
+
+
+
+

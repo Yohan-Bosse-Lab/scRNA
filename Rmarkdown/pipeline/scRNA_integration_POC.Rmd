@@ -1,0 +1,91 @@
+---
+title: "Expression of cell types specific markers"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: F
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+```{r, setup,echo=FALSE,message=F, warning=F}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+
+library(Seurat) #scRNA analyses
+library(sctransform) #data normalization
+library(scater) #outlier values predictions
+library(scAnnotatR) #cell type annotation (devtools::install_github('grisslab/scAnnotatR'))
+library(DoubletFinder) #find doublets? 
+library(RColorBrewer)
+library(vegan) #diversity indices
+
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+
+combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN.rds'))
+
+combined_permethod_percelltype = readRDS(file.path(params$datapath,'combined_permethod_percelltypeN.rds'))
+
+umap =DimPlot(combined_permethod[[1]], reduction = "umap", group.by = "predicted.ann_level_1",cols = brewer.pal(n = 5, name = "Set1"),pt.size=0.4) + ggtitle('Cells') + guides(shape='none') +theme(legend.position = "right",axis.title = element_text(size = 8),axis.text =element_text(size = 8) )
+
+
+cell_type = c('Epithelial','Immune')
+
+plot_UMAPS = list()
+###plots
+for(c in seq_along(cell_type)){
+
+  all_types = c(combined_permethod_percelltype[[c]][[1]]@meta.data$predicted.ann_finest_level,
+  combined_permethod_percelltype[[c]][[2]]@meta.data$predicted.ann_finest_level)
+  all_types = names(table(all_types))
+  all_colors = c(brewer.pal(n =12, name = "Paired"),'gray','black','darkred')[1:length(all_types)]
+  all_colors_type = data.frame(all_types,all_colors)
+  
+for(i in 1:2){
+#cell types plots  FINE LEVELS
+  data_summarised = combined_permethod_percelltype[[c]][[i]]@meta.data %>% 
+      group_by(predicted.ann_finest_level,patient) %>%
+      summarise(n = length(predicted.ann_level_1),.groups='keep')
+  
+  color_vector = all_colors_type$all_colors[all_colors_type$all_types %in% unique(data_summarised$predicted.ann_finest_level)]
+  
+  
+  title = paste0(ifelse(c==1,'Epithelial --- ','Immune --- '),ifelse(i==1,'Cells','Nuclei'))
+  #
+  plot_UMAPS[[(i*2)+c-2]] = DimPlot(combined_permethod_percelltype[[c]][[i]], reduction = "umap", cols = color_vector,group.by = "predicted.ann_finest_level",pt.size=1) + ggtitle(title) + guides(shape='none') + theme(legend.text=element_text(size=7),legend.position='right',axis.title = element_text(size = 8),axis.text =element_text(size = 8))
+  #plot_UMAPS[[(i*2)+c-2]]$labels$colour = ifelse(c==1,'Epithelial','Immune') 
+}}
+```
+
+
+# Epithelial, Endothelial, Stroma, Immune specific markers gene expression
+* This is done in Single-cell samples only
+* Note that **PTPRC** is not in the integrated dataset (only the 2000 most variable genes are present). However, it is present in the individual datasets and highly specific to Immune cells.
+
+```{r per method, cell cell type normal tissue, fig.width = 10, fig.height=8}
+FeaturePlot(combined_permethod[[1]], features = c('PTPRC', "CLDN5", "COL1A2",'EPCAM')) + umap
+```
+
+
+# AT1 markers gene expression
+* This is done in epithelial cells subclusters (Single-cell samples only).
+* Notably, there are two clusters which are AT1. This isn't a patient-effect (I checked) and I doesn't look like any kind of technical artefact I can think off. Instead, it looks like a real biological effect. In fact, for other AT1-specific marker genes from [HLCA](https://azimuth.hubmapconsortium.org/references/#Human%20-%20Lung%20v2%20%28HLCA%29), expression patterns different between the 2 AT1 clusters.
+```{r at1 plots, fig.width = 10, fig.height=8}
+c=1;i=1
+FeaturePlot(combined_permethod_percelltype[[c]][[i]], features = c("AGER", "PDPN", "CLIC5")) + plot_UMAPS[[1]]
+```
+
+
+# AT2 markers gene expression
+* This is done in epithelial cells subclusters (Single-cell samples only).
+* These are quite specific to AT2.
+```{r at2 plots, fig.width = 10, fig.height=10}
+c=1;i=1
+FeaturePlot(combined_permethod_percelltype[[c]][[i]], features = c("SFTPB", "SFTPC", "SFTPD", "MUC1", "ETV5")) + plot_UMAPS[[1]]
+```

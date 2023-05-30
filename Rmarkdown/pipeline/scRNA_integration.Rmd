@@ -1,0 +1,196 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(sctransform) #data normalization
+library(scater) #outlier values predictions
+library(scAnnotatR) #cell type annotation (devtools::install_github('grisslab/scAnnotatR'))
+library(DoubletFinder) #find doublets? 
+library(RColorBrewer)
+library(vegan) #diversity indices
+
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+source('../R/doubletfinder.R')
+source('../R/azimuth_analysis.R')
+```
+
+# Loading data  
+```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
+seurat.objects =readRDS(file.path(params$datapath,"adeno.12samples.rds"))
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+
+metadata = data.frame()
+cells = NULL
+for(i in 1:12)
+{
+  if(i>1) colnames(metadata) = colnames(seurat.objects[[i]]@meta.data) 
+  metadata = rbind(metadata,seurat.objects[[i]]@meta.data)
+  cells[i] = median(seurat.objects[[i]]@meta.data$nFeature_RNA)
+}
+
+metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
+
+nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
+```
+
+# Integration (12 samples)
+  * Here, we follow the [most up-to-date approach of Seurat](https://satijalab.org/seurat/articles/integration_introduction.html#performing-integration-on-datasets-normalized-with-sctransform-1) to integrate different single-cells samples together.
+  * This is a computationally expensive step that scales greater than linearly with dataset size, so proceed with caution.
+```{r integration, echo = T, message = F}
+if(file.exists(file.path(params$datapath,'adeno.combined.sct.rds')) == F){
+  features <- SelectIntegrationFeatures(object.list = seurat.objects, nfeatures = 2000)
+  seurat.objects <- PrepSCTIntegration(object.list = seurat.objects, anchor.features = features)
+  adeno.anchors <- FindIntegrationAnchors(object.list = seurat.objects, normalization.method = "SCT",anchor.features = features)
+  adeno.combined.sct <- IntegrateData(anchorset = adeno.anchors, normalization.method = "SCT")
+  npc = 30
+  message(paste0('Keeping the first ',npc, ' Principal Components for UMAP'))
+  adeno.combined.sct <- RunPCA(adeno.combined.sct, verbose = FALSE)
+  adeno.combined.sct <- RunUMAP(adeno.combined.sct, reduction = "pca", dims = 1:npc, verbose = FALSE)
+  saveRDS(adeno.combined.sct, file = file.path(params$datapath,"adeno.combined.sct.rds"))
+} else adeno.combined.sct = readRDS(file.path(params$datapath,'adeno.combined.sct.rds'))
+```
+
+# General Plots
+```{r UMAPplots}
+p1 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "patient")+ theme(text = element_text(size = 30))  
+p1$labels$colour = 'Patients'
+p2 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "type", cols = c('yellow','darkblue'))+ theme(text = element_text(size = 30))  
+p2$labels$colour = 'Type'
+p3 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "method")+ theme(text = element_text(size = 30))  
+p3$labels$colour = 'Method'
+p4 <- DimPlot(adeno.combined.sct, reduction = "umap", group.by = "predicted.ann_level_1", cols = 'Set1') + ggtitle("Cell Type Annotation")+ theme(text = element_text(size = 30))  
+p4$labels$colour = 'Annotations'
+
+png(file.path(params$datapath,'../results/Figure4_UMAP_general.png'),width = 2600,height = 1400)
+p1 + p2 + p3 + p4 + plot_annotation(tag_levels = 'A')
+dev.off()
+```
+
+
+# 'SingleCells','SingleNuclei','Depleted' specific plots
+```{r UMAPplots}
+if(file.exists(file.path(params$datapath,'combined_permethod.rds')) == F){
+npc=30
+combined_permethod = list()
+for(i in 1:3){
+  if((i == 1)&(t==1)) samples = c(1:length(filenames))[regexpr('CST-...._all_',filenames)>0]
+  if((i == 2)&(t==1)) samples = c(1:length(filenames))[regexpr('CST-...._SN_',filenames)>0]
+  if((i == 3)&(t==1)) samples = c(1:length(filenames))[regexpr('CST-...._depletion_',filenames)>0]
+  
+  features <- SelectIntegrationFeatures(object.list = seurat.objects[samples], nfeatures = 2000)
+  seurat.objects.method <- PrepSCTIntegration(object.list = seurat.objects[samples], anchor.features = features)
+  adeno.anchors <- FindIntegrationAnchors(object.list = seurat.objects.method, normalization.method = "SCT", anchor.features = features)
+  combined_permethod[[i]] <- IntegrateData(anchorset = adeno.anchors, normalization.method = "SCT")
+  combined_permethod[[i]] <- RunPCA(combined_permethod[[i]], verbose = FALSE)
+  combined_permethod[[i]] <- RunUMAP(combined_permethod[[i]], reduction = "pca", dims = 1:npc, verbose = FALSE)
+  combined_permethod[[i]]@meta.data$level1_type = paste(substring(combined_permethod[[i]]@meta.data$predicted.ann_level_1,1,4),combined_permethod[[i]]@meta.data$type,sep = '_')
+  
+  combined_permethod[[i]] <- FindNeighbors(combined_permethod[[i]], reduction = "pca", dims = 1:30)
+  combined_permethod[[i]] <- FindClusters(combined_permethod[[i]], resolution = 0.5)
+}
+}
+saveRDS(combined_permethod,file.path(params$datapath,"combined_permethod_pertype.rds"))
+
+```
+
+# plots
+```{r plots}
+###plots
+for(i in 1:3){
+  methods = c('SingleCells','SingleNuclei','Depleted')
+  figure = c(5,7,6)
+  pB=DimPlot(combined_permethod[[i]], reduction = "umap", group.by = "level1_type",cols = brewer.pal(n = 10, name = "Paired")[c(5,6,1,2,3,4,9,10,7,8)],shape.by = 'type',pt.size=0.4) + ggtitle('Cells Annotations') + guides(shape='none') + theme(legend.text=element_text(size=8))
+    
+  pB$labels$colour = 'Annotations'  
+
+  pA = DimPlot(combined_permethod[[i]], reduction = "umap",label = T,group.by =  'integrated_snn_res.0.5') + ggtitle('Clustering') + theme(legend.position = "none")
+
+  ###data creation
+  data = as.data.frame(table(combined_permethod[[i]]@meta.data$type,combined_permethod[[i]]@meta.data$predicted.ann_level_1,combined_permethod[[i]]@meta.data$integrated_snn_res.0.5))
+  colnames(data)=c('type','Annotation','Clusters','Number of Cells')
+  
+  data$`Proportions of Cells`= 0
+  
+  data$`Proportions of Cells`[data$type=='Normal'] = data$`Number of Cells`[data$type=='Normal']/sum(data$`Number of Cells`[data$type=='Normal'])
+  
+  data$`Proportions of Cells`[data$type=='Tumor'] = data$`Number of Cells`[data$type=='Tumor']/sum(data$`Number of Cells`[data$type=='Tumor'])
+ 
+  pC = ggplot(data=data, aes(x=Clusters, y=`Proportions of Cells`,fill=Annotation)) +
+    geom_bar(position="stack", stat="identity") + scale_fill_brewer(palette="Set1") + facet_wrap(~type, scales = "free_x",nrow=2) + theme(plot.title = element_text(face = "bold")) + ggtitle('Cell annotation per cluster and tissue type') 
+  pC$labels$fill = 'Annotations'
+  
+  pdf(file.path(params$datapath,paste0("../results/Figure",figure[i],"_UMAP_",methods[i],".pdf")),width = 11,height = 7)
+  (pA+pB)/(pC) + plot_annotation(tag_levels = 'A')
+  dev.off()
+}
+```
+
+#DEGs general 
+```{r degs}
+degs = data.frame(cell_type = c('Stroma','Immune','Epithelial','Endothelial'), `Single Cells\nvs Single Nuclei` = rep(0,4),`Single Cells\nvs Depleted` = 0, `Single Nuclei\nvs Depleted` = 0,check.names = F)
+
+adeno.combined.sct <- SetIdent(adeno.combined.sct, value = 'predicted.ann_level_1')
+
+for(j in seq_along(degs$cell_type)) {
+  deg1 <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "Single Cells",ident.2 = "Single Nuclei", group.by = 'method',assay = 'integrated',subset.ident = degs$cell_type[j],max.cells.per.ident=1000)
+
+  deg2 <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "Single Cells",ident.2 = "Single Cells (depletion)", group.by = 'method',assay = 'integrated',subset.ident = degs$cell_type[j],max.cells.per.ident=1000)
+
+  deg3 <- FindMarkers(adeno.combined.sct,slot = 'scale.data', ident.1 = "Single Cells (depletion)",ident.2 = "Single Nuclei", group.by = 'method',assay = 'integrated',subset.ident = degs$cell_type[j],max.cells.per.ident=1000)
+
+degs[j,2] = nrow(deg1[deg1$p_val_adj<0.05,])
+degs[j,3] = nrow(deg2[deg2$p_val_adj<0.05,])
+degs[j,4] = nrow(deg3[deg3$p_val_adj<0.05,])
+
+print(paste0(j,'---', Sys.time()))
+}
+
+degs = degs %>% pivot_longer(cols = 2:4,names_to = "Comparisons",values_to = "Number of DEGs")
+
+p_degs = ggplot(data=degs, aes(x=Comparisons, y=`Number of DEGs`,fill=Comparisons)) +
+    geom_bar(stat="identity") + 
+    facet_wrap(~cell_type)
+
+pdf(file.path(params$datapath,'../results/Figure9_degs.pdf'),width = 9,height = 6)
+p_degs
+dev.off()
+
+```
+
+#heatmap/dotplot ? 
+```{r,eval = F}
+markers = read.csv('scRNA/scRNA/data/marker_genes_April2023.txt',header = F,row.names = 1)
+
+###epithelial
+epi = subset(adeno.combined.sct,subset = predicted.ann_level_1= 'Epithelial')
+DotPlot(epi, features = unlist(markers[c(3,6,12,15,36,43,49),]),
+        split.by = "predicted.ann_finest_level") + RotatedAxis()
+```
+
+
+# session info  
+```{r session, message= T}
+###session
+sessionInfo()
+```
+

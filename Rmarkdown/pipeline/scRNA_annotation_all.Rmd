@@ -1,0 +1,188 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+* This is a scRNA project 
+* Note that you can create this document by running:  
+  * `Rscript -e "rmarkdown::render('scRNA_seurat_lung_adenocarcino_vSCT_merge_intergrated.RMd',params = list())"` and `knit`-it directly in `RStudio`.
+  
+```{r, timehook,echo=F}
+knitr::knit_hooks$set(timehook = local({
+  now <- NULL
+  function(before, options) {
+    if (before) {
+      # record the current time before each chunk
+      now <<- Sys.time()
+    } else {
+      # calculate the time difference after a chunk
+      res <- difftime(Sys.time(), now)
+      # return a character string to show the time
+      paste("\n\n\nTime for this code chunk to run:",signif(res,3),attr(res,'units'))
+    }
+  }
+}))
+```
+
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(sctransform) #data normalization
+library(scater) #outlier values predictions
+library(scAnnotatR) #cell type annotation (devtools::install_github('grisslab/scAnnotatR'))
+library(DoubletFinder) #find doublets? 
+
+library(vegan) #diversity indices
+
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+source('../R/doubletfinder.R')
+source('../R/azimuth_analysis.R')
+```
+
+# Loading data  
+  * `barcodes.tsv.gz`, `features.tsv.gz` and `matrix.mtx.gz` files come directly from  `cell ranger`.
+
+
+```{r filenames,message  = T, fig.width = 11, fig.height=8,echo=T}  
+filenames =  list.files('.',pattern = '-C[ST]T-',full.names = F)
+filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix')
+filenames
+```
+
+
+```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F, timehook = TRUE}  
+#create seurat objects
+seurat.objects = list()
+l = length(filenames)
+
+#create filters objects
+QC_filters=data.frame(nCount_min=rep(0,l),nCount_max=rep(0,l),
+                    nFeature_RNA_min=rep(0,l),nFeature_RNA_max=rep(0,l),
+                    percent.mt_min=rep(0,l),percent.mt_max=rep(0,l))
+
+
+for(i in 1:length(filenames)) {
+#for(i in 1:1) {
+  # Read 10x data
+  cts <- Read10X(data.dir = filepaths[i])
+  seurat.objects[[i]] = CreateSeuratObject(counts = cts)
+  print(seurat.objects[[i]])
+  seurat.objects[[i]][["percent.mt"]] <- PercentageFeatureSet(seurat.objects[[i]], pattern = "^MT-")
+
+  # Filters
+  QC_filters[i,1:2] = attr(isOutlier(seurat.objects[[i]]@meta.data$nCount),'thresholds')
+  QC_filters[i,3:4] = attr(isOutlier(seurat.objects[[i]]@meta.data$nFeature_RNA),'thresholds')
+  QC_filters[i,5:6] = attr(isOutlier(seurat.objects[[i]]@meta.data$percent.mt),'thresholds')
+  
+  # Subset
+  seurat.objects[[i]] <- subset(seurat.objects[[i]], subset = percent.mt <  QC_filters[i,6])
+
+  # Generate metadata
+  temp = strsplit(filenames[i],split = '_')[[1]]
+  if(temp[2]=='all')temp[2]='Single Cells'
+  if(temp[2]=='depletion')temp[2]='Single Cells (depletion)'
+  if(temp[2]=='SN')temp[2]='Single Nuclei'
+  meta = c(filenames[i],temp[2],ifelse(regexpr('CST',temp[1])>0,'Normal','Tumor'),strsplit(temp[1],fixed = T,'-')[[1]][2])
+  seurat.objects[[i]]@meta.data$samplename = temp[1]
+  seurat.objects[[i]]@meta.data$method = temp[2]
+  seurat.objects[[i]]@meta.data$type = ifelse(regexpr('CST',temp[1])>0,'Normal','Tumor')
+  seurat.objects[[i]]@meta.data$patient = ifelse(regexpr('^4',temp[1])>0,'P4','P6')
+  
+  # Normalisation
+  seurat.objects[[i]] <- SCTransform(seurat.objects[[i]], method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = F)
+  
+  print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (subsetting, normalisation)'))
+}
+
+names(seurat.objects) =  filenames
+
+print(seurat.objects)
+```
+
+
+# Doublet Finder
+  * find and remove doublet (assuming a 5% doublet rate).
+```{r doublet finder, echo=T, message=FALSE, warning=FALSE,include = FALSE, timehook=T}
+#precomputed pk's for doubletfinder
+pK_empirical = c(0.030,0.010,0.020,0.300,0.300,0.001,0.210,0.060,0.010,0.090,0.240,0.040)
+
+for(i in 1:length(filenames)) {
+  #doublets finder
+  doubletfinder.out = doubletfinder_wrapper(seurat.objects[[i]], pK_empirical = pK_empirical[i])
+  seurat.objects[[i]] = doubletfinder.out[[1]]
+  pK_empirical[i] =  doubletfinder.out[[2]]
+}
+print(seurat.objects)
+```
+
+```{r doublet finder results, message=T}
+#precomputed pk's for doubletfinder
+print(seurat.objects)
+summary_table = data.frame(sample = filenames,
+                           type = '' ,
+                           method = '',
+                           patient = '',
+                           nb_cells = '',
+                           nb_genes = '')
+
+for(i in seq_along(filenames)){
+  summary_table$type[i] = unique(seurat.objects[[i]]$type)
+  summary_table$method[i] = unique(seurat.objects[[i]]$method)
+  summary_table$patient[i] =  unique(seurat.objects[[i]]$patient)
+  summary_table$nb_cells[i] =  ncol(seurat.objects[[i]])
+   summary_table$nb_genes[i] =  nrow(seurat.objects[[i]])
+}
+
+summary_table = summary_table[order(summary_table$type,summary_table$method),]
+
+write.table(summary_table,file.path(params$datapath,"../results/summary_table.csv"),row.names = F, quote = F,sep = '\t')
+
+```
+
+
+# Azimuth Annotation
+  * Annotation based on [HLCA version 2](https://app.azimuth.hubmapconsortium.org/app/human-lung-v2) from Azimuth.
+  * 58 lung specific cell types.
+```{r azimuth annotation,include=FALSE}
+  # Cell Type Identification
+for(i in 1:length(filenames)) {
+  seurat.objects[[i]] = azimuth_annotation(seurat.objects[[i]],annotation_threshold = 0.5)
+}
+```
+
+
+# Filters defined with isOutlier()
+```{r DTfilter,echo =F, message = T} 
+rownames(QC_filters) = filenames
+QC_filters = signif(QC_filters,4)
+datatable(QC_filters,caption = htmltools::tags$caption(htmltools::strong("Filters as calculated by isOutlier()"), style="color:darkred"), options = list(dom = 't'))
+```
+
+# session info  
+```{r session, message= T}
+###session
+saveRDS(seurat.objects, file = file.path(params$datapath,"adeno.12samples.rds"))
+sessionInfo()
+```
+
+
+
+
+
+
