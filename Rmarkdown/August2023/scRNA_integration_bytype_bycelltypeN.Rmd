@@ -1,0 +1,310 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(sctransform) #data normalization
+library(RColorBrewer)
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+
+source('../R/azimuth_analysis.R')
+
+source('../R/infercnv.R')
+```
+
+# Loading data  
+```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
+seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23.rds"))
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+
+metadata = data.frame()
+cells = NULL
+for(i in seq_along(filenames))
+{
+  if(i>1) colnames(metadata) = colnames(seurat.objects[[i]]@meta.data) 
+  metadata = rbind(metadata,seurat.objects[[i]]@meta.data)
+  cells[i] = median(seurat.objects[[i]]@meta.data$nFeature_RNA)
+}
+
+metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
+
+nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
+```
+
+
+# 'SingleCells','SingleNuclei','Depleted' specific plots NORMAL
+```{r integration,  include= F}
+if(file.exists(file.path(params$datapath,'combined_permethod_pertypeN24.rds')) == F){
+combined_permethod = list()
+for(i in 1:2){
+  if(i == 1) samples = c(1:length(filenames))[regexpr('CST-...._all_',filenames)>0]
+  if(i == 2) samples = c(1:length(filenames))[regexpr('CST-...._SN_',filenames)>0]
+ 
+  features <- SelectIntegrationFeatures(object.list = seurat.objects[samples], nfeatures = 2000)
+  seurat.objects.method <- PrepSCTIntegration(object.list = seurat.objects[samples], anchor.features = features)
+  adeno.anchors <- FindIntegrationAnchors(object.list = seurat.objects.method, normalization.method = "SCT", anchor.features = features)
+  combined_permethod[[i]] <- IntegrateData(anchorset = adeno.anchors, normalization.method = "SCT")
+  
+  #annotation
+  azimuth_out  = azimuth_annotation(combined_permethod[[i]],annotation_threshold = 0.5,v2=T)
+  combined_permethod[[i]] = azimuth_out[[3]]
+  
+  
+  #infercnv
+  infercnv_out = infercnv_wrapper(seurat_obj = combined_permethod[[i]],
+                            quantile = 0.5, 
+                            out.dir = file.path(params$datapath,'infercnv/24samples/',ifelse(i==1,'Normal_cell','Normal_nucleus')),
+                            level = 'predicted.ann_level_1',
+                            gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional'))
+  
+  combined_permethod[[i]] = infercnv_out[[1]]
+  
+}
+saveRDS(combined_permethod,file.path(params$datapath,"combined_permethod_pertypeN24.rds"))
+} else combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
+```
+
+
+# 'SingleCells','SingleNuclei' NORMAL subset epit & Immune
+```{r per method, cell cell type normal tissue}
+if(file.exists(file.path(params$datapath,'combined_permethod_percelltypeNd24.rds')) == F){
+npc=30
+type = c('Normal')
+cell_type = c('Epithelial','Immune')
+combined_permethod_percelltype = list(list(),list())
+ for(c in 1:2)
+ {
+     for(i in 1:2)
+    {
+      combined_permethod_percelltype[[c]][[i]] = subset(combined_permethod[[i]], subset = predicted.ann_level_1 == cell_type[c])
+
+  category = c('predicted.ann_finest_level','predicted.ann_level_1','predicted.ann_level_2','predicted.ann_level_3','predicted.ann_level_4','predicted.ann_level_5')     
+  
+    for(cat in seq_along(category)){
+      # for annotation's sake, label cells with freq < 1% as 'others' (per sample)
+      fine_annotations = combined_permethod_percelltype[[c]][[i]]@meta.data[,colnames(combined_permethod_percelltype[[c]][[i]]@meta.data) %in% category[cat]]
+      fine_annotations_summary = table(fine_annotations)
+      others = names(fine_annotations_summary)[fine_annotations_summary/sum(fine_annotations_summary)<0.01]
+      fine_annotations[fine_annotations %in% others] = 'others'
+     
+      #fixed the long names 
+      fine_annotations = ifelse(nchar(fine_annotations)>12,sub(" ([^ ]*)$", "\n\\1",fine_annotations),fine_annotations)
+      
+      combined_permethod_percelltype[[c]][[i]]@meta.data[,colnames(combined_permethod_percelltype[[c]][[i]]@meta.data) %in% category[cat]] = fine_annotations
+     }
+  
+}}
+
+saveRDS(combined_permethod_percelltype,file.path(params$datapath,"combined_permethod_percelltypeN24.rds"))
+} else combined_permethod_percelltype = readRDS(file.path(params$datapath,'combined_permethod_percelltypeN24.rds'))
+```
+
+# 'SingleCells','SingleNuclei' NORMAL subset epit & ImmunePLOTS
+```{r UMAPplots}
+###plots
+barplots = list()
+#color_vectors = list()
+cell_type = c('Epithelial','Immune')
+for(c in seq_along(cell_type)){
+
+  all_types = c(combined_permethod_percelltype[[c]][[1]]@meta.data$predicted.ann_level_3,
+  combined_permethod_percelltype[[c]][[2]]@meta.data$predicted.ann_level_3)
+  all_types = names(table(all_types))
+  
+  
+  all_colors = c(brewer.pal(n =12, name = "Paired")[-8],'gray','black','darkred')[1:length(all_types)]
+  all_colors[length(all_colors)] = '#FF7F00'#ensure that orange [8] is last for unknown...
+  all_colors_type = data.frame(all_types,all_colors)
+  
+for(i in 1:2){
+#cell types plots  FINE LEVELS
+  data_summarised = combined_permethod_percelltype[[c]][[i]]@meta.data %>% 
+      group_by(predicted.ann_level_3,patient) %>%
+      summarise(n = length(predicted.ann_level_1),.groups='keep')
+  
+  empty_catego = all_colors_type$all_types
+  data_summarised = data_summarised %>% bind_rows(data.frame(predicted.ann_level_3= empty_catego,patient = rep('P1000',length(empty_catego)),n =rep(0,length(empty_catego)) ))#}
+  color_vector = all_colors_type$all_colors[all_colors_type$all_types %in% unique(data_summarised$predicted.ann_level_3)]
+
+barplots[[(i*2)+c-2]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_3)) +
+    geom_bar(stat="identity")+scale_fill_manual( ifelse(c==1,'Cell Types ~ Epithelial','Cell Types ~ Immune'),values= color_vector) + ylab('Total Number of Cells')+theme_classic() + xlab('')+theme(axis.title = element_text(size = 8),legend.position = ifelse(i ==1,"none",'right'))
+
+}}
+
+```
+
+
+#cell types general plots 
+```{r celltypes plots}
+barplots_general = list()
+for(i in 1:2){
+  
+  data_summarised = combined_permethod[[i]]@meta.data %>% 
+      group_by(predicted.ann_level_1,patient) %>%
+      summarise(n = length(predicted.ann_level_1),.groups='keep')
+
+barplots_general[[i]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_1)) +
+    geom_bar(stat="identity")+scale_fill_manual('Cell Types  ~ level1',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+theme_classic()+theme(axis.title = element_text(size = 8),legend.position = ifelse(i ==1,"none",'right')) +ylab('Total Number of cells') + xlab('') 
+}
+
+
+
+```
+
+```{r stats}
+table(metadata$method[metadata$predicted.ann_level_1=='Epithelial' & metadata$type == 'Normal'])
+```
+
+# plots
+```{r plots}
+plot_UMAPS = list()
+
+###plots
+  plot_SC=DimPlot(combined_permethod[[1]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = brewer.pal(n = 5, name = "Set1"),pt.size=0.2) + ggtitle('Cells') + guides(shape='none') +theme(legend.position = "none",axis.title = element_text(size = 8),axis.text =element_text(size = 8) )#+ 
+ #    geom_text(data=seurat_clusters[[1]], aes(x=UMAP_1,y=UMAP_2,label= seurat_clusters))
+  
+   plot_SC$labels$colour = 'Cell types ~ level1' 
+   
+   
+  plot_SN=DimPlot(combined_permethod[[2]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = brewer.pal(n = 5, name = "Set1"),pt.size=0.2) + ggtitle('Nuclei') + guides(shape='none') +theme(legend.position = "none",axis.title = element_text(size = 8),axis.text =element_text(size = 8)) #+ 
+#     geom_text(data=seurat_clusters[[2]], aes(x=UMAP_1,y=UMAP_2,label= seurat_clusters))
+  plot_SN$labels$colour = 'Cell types ~ level1'  
+
+  
+###plots
+for(c in seq_along(cell_type)){
+
+  all_types = c(combined_permethod_percelltype[[c]][[1]]@meta.data$predicted.ann_level_3,
+  combined_permethod_percelltype[[c]][[2]]@meta.data$predicted.ann_level_3)
+  all_types = names(table(all_types))
+  
+  all_colors = c(brewer.pal(n =12, name = "Paired")[-8],'gray','black','darkred')[1:length(all_types)]
+  all_colors[length(all_colors)] = '#FF7F00'#ensure that orange [8] is last for unknown...
+  all_colors_type = data.frame(all_types,all_colors)
+  
+for(i in 1:2){
+#cell types plots  FINE LEVELS
+  data_summarised = combined_permethod_percelltype[[c]][[i]]@meta.data %>% 
+      group_by(predicted.ann_level_3,patient) %>%
+      summarise(n = length(predicted.ann_level_1),.groups='keep')
+  
+  color_vector = all_colors_type$all_colors[all_colors_type$all_types %in% unique(data_summarised$predicted.ann_level_3)]
+ 
+  title = paste0(ifelse(i==1,'Cells','Nuclei'),ifelse(c==1,' ~ Epithelial',' ~ Immune'))
+  #
+  plot_UMAPS[[(i*2)+c-2]] = DimPlot(combined_permethod_percelltype[[c]][[i]], reduction = "proj.umap", cols = color_vector,group.by = "predicted.ann_level_3",pt.size=0.2) + ggtitle(title) + guides(shape='none') + theme(legend.text=element_text(size=7),legend.position='none',axis.title = element_text(size = 8),axis.text =element_text(size = 8))
+  #plot_UMAPS[[(i*2)+c-2]]$labels$colour = ifelse(c==1,'Epithelial','Immune') 
+}}
+ 
+  
+  pdf(file.path(params$datapath,'../results/Figures_August2023/Fig3_UMAPs_CTA_normal24.pdf'),width = 12,height = 7) 
+ (plot_SC + barplots_general[[1]] + plot_SN + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) / 
+ (plot_UMAPS[[2]] + barplots[[2]] + plot_UMAPS[[4]] + (barplots[[4]]+guides(fill=guide_legend(ncol=2))) + plot_layout(widths = c(10,1,10,1)))  / (plot_UMAPS[[1]] + barplots[[1]] + plot_UMAPS[[3]] + barplots[[3]] + plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = list(c('A','','B','','C','','D','','E','','F','')))
+  dev.off()
+```
+
+# plots
+```{r lambrechts barplot}
+sc_sn_plots = list()
+#combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
+for(i in 1:2){
+metadata_simplified = combined_permethod[[i]]@meta.data
+
+data_summarised = combined_permethod[[i]]@meta.data %>% 
+  group_by(predicted.ann_finest_level,patient,predicted.ann_level_1) %>%
+  summarise(n = length(predicted.ann_finest_level),sum = sum(nFeature_RNA),cnv_sum = sum(cnv_score),.groups='keep')
+
+data_summarised$n_fraction = 0
+data_summarised$nFeature_RNA_mean = 0
+data_summarised$cnv_mean = 0
+unique_patients = unique(data_summarised$patient)
+
+#keep best labels
+for(u in unique(data_summarised$predicted.ann_finest_level)){  
+  temp = data_summarised[data_summarised$predicted.ann_finest_level==u,] 
+ 
+  for(p in seq_along(unique_patients)){
+  
+  temp$n_fraction[temp$patient==unique_patients[p]] = sum(temp$n[temp$patient==unique_patients[p]])/sum(temp$n)
+
+  temp$nFeature_RNA_mean[temp$patient==unique_patients[p]] = sum(temp$sum[temp$patient==unique_patients[p]])/sum(temp$n[temp$patient==unique_patients[p]])
+ 
+  temp$cnv_mean[temp$patient==unique_patients[p]] = sum(temp$cnv_sum[temp$patient==unique_patients[p]])/sum(temp$n[temp$patient==unique_patients[p]])
+  }
+  
+  data_summarised[data_summarised$predicted.ann_finest_level ==u,] = temp
+
+}
+
+data_summarised$predicted.ann_level_1 = factor(data_summarised$predicted.ann_level_1,level = c('Immune','Epithelial','Endothelial','Stroma','unknown'))
+
+data_summarised$patient = factor(data_summarised$patient,level = c(4,6,8,10))
+
+metadata_simplified$predicted.ann_level_1 = factor(metadata_simplified$predicted.ann_level_1,level = c('Immune','Epithelial','Endothelial','Stroma','unknown'))
+
+#plots
+fraction_per_patient = ggplot(data_summarised, aes(n_fraction,predicted.ann_finest_level,fill = patient)) + 
+  geom_col() +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+  ylab('clusters') +
+  xlab('Fraction of cells') +
+  theme_bw() + theme(legend.position = ifelse(i==1,'none','bottom'),axis.title.x= list(element_blank(),element_text())[[i]])
+
+number_of_cells = ggplot(data_summarised, aes(n,predicted.ann_finest_level ,fill = patient)) +
+    geom_col() +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+  ylab('clusters') +
+  xlab('Number of cells') +
+   theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),
+  strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
+
+
+#data_summarised_UMI = data_summarised[data_summarised$patient=='P4',]
+number_of_UMI = ggplot(metadata_simplified, aes(nCount_RNA,predicted.ann_finest_level )) + geom_boxplot(fill = "lightblue") + scale_x_continuous(trans= 'log10',breaks = c(500,1500,5000,15000,50000), label = c(500,1500,5000,15000,50000)) +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+  ylab('clusters') +
+  xlab('Number of UMIs per cell') +
+   theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),
+  strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
+
+#CNV 
+cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_finest_level)) + geom_boxplot(fill = "orange") + scale_x_continuous(trans= 'log10',breaks = c(0.0001,0.001,0.01), label = c(0.0001,0.001,0.01),limits = c(0.00004,0.02)) +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+    ylab('clusters') +
+    xlab('CNV score') +
+    theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),
+                       strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
+
+
+
+  sc_sn_plots[[i]] = fraction_per_patient|number_of_cells|number_of_UMI
+}
+
+pdf(file.path(params$datapath,'../results/Figures_August2023/Fig3_barplots_lambrechtsN24.pdf'),width = 14,height = 12) 
+(sc_sn_plots[[1]]/sc_sn_plots[[2]] ) + plot_annotation(tag_levels = 'A')
+dev.off()
+```
+
+
+```{r done}
+print('done')
+```
