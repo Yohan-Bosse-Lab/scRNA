@@ -32,6 +32,9 @@ library(DT) #data viz
 library(plotly)
 source('../R/doubletfinder.R')
 source('../R/azimuth_analysis.R')
+
+source('../R/infercnv.R')
+
 ```
 
 # Loading data  
@@ -89,7 +92,7 @@ for(i in 1:length(filenames)) {
   seurat.objects[[i]]@meta.data$patient = strsplit(temp[1],'-')[[1]][1]
   
   # Normalisation
-  seurat.objects[[i]] <- SCTransform(seurat.objects[[i]], method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = F)
+ # seurat.objects[[i]] <- SCTransform(seurat.objects[[i]], method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = F)
   
   print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (subsetting, normalisation)'))
 }
@@ -148,6 +151,52 @@ datatable(QC_filters,caption = htmltools::tags$caption(htmltools::strong("Filter
 
 saveRDS(seurat.objects, file = file.path(params$datapath,"adeno.24samples_27_07_23.rds"))
 ```
+
+
+# SAVE DATA  
+```{r annotation_cnv}
+seurat.objects = readRDS(file.path(params$datapath,"adeno.24samples_27_07_23.rds"))
+
+for(i in seq_along(filenames)){
+#for(i in c(3,23)){
+  azimuth_out  = azimuth_annotation(seurat.objects[[i]],annotation_threshold = 0.5,v2=T)
+  seurat.objects[[i]] = azimuth_out[[3]]
+    
+  #infercnv
+  infercnv_out = suppressMessages(infercnv_wrapper(seurat_obj = seurat.objects[[i]],
+                              quantile = 0.5, 
+                              out.dir = file.path(params$datapath,'infercnv/24samples/',filenames[i]),
+                              level = 'predicted.ann_level_1',
+                              gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional')))
+  
+  seurat.objects[[i]] = infercnv_out[[1]]
+  
+  print(infercnv_out[[2]])
+  print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (ANNOTATION, CNV)'))
+}
+  
+saveRDS(seurat.objects, file = file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+
+metadata = data.frame()
+for(i in seq_along(filenames))
+{
+  if(i>1) colnames(metadata) = colnames(seurat.objects[[i]]@meta.data) 
+  metadata = rbind(metadata,seurat.objects[[i]]@meta.data)
+}
+
+metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
+
+write.csv(metadata,file.path(params$datapath,"adeno.24samples_metadata.csv"))
+
+```
+
+
+
+
+
+
+
+
 
 # DONE DATA  
 ```{r done,message  = T, fig.width = 11, fig.height=8,echo=T}  

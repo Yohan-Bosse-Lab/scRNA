@@ -1,0 +1,736 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+* This are plots for cell type annotations
+  
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(sctransform) #data normalization
+library(scater) #outlier values predictions
+library(DoubletFinder) #find doublets? 
+library(dplyr) #data handling
+library(tidyr)
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+#source('../R/doubletfinder.R')
+source('../R/azimuth_analysis.R')
+library(scales)
+```
+
+# Loading data  
+```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}
+#seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+
+metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
+metadata = relabeler(metadata)
+metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
+
+nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
+```
+
+
+# Cell types annotations summaries
+```{r celltypes,echo = F} 
+data_summarised = metadata %>% 
+    group_by(predicted.ann_level_1,method,type,patient,unique) %>%
+    summarise(n = length(predicted.ann_level_1),.groups='keep')
+
+data_summarised$fraction = 0
+
+for(i in seq_along(nb_cells_per_sample[,1])){
+  data_summarised$fraction[data_summarised$unique == nb_cells_per_sample$Var1[i]] =  data_summarised$n[data_summarised$unique == nb_cells_per_sample$Var1[i]] / nb_cells_per_sample$Freq[i]*100
+}
+
+data_summarised$methodXtype = paste(data_summarised$type,data_summarised$method,sep = ' --- ')
+
+summary_bars = ggplot(data=data_summarised, aes(x=patient, y=fraction, fill=predicted.ann_level_1)) +
+  geom_bar(stat="identity") + facet_wrap(~methodXtype,nrow = 2, ncol = 3, scales = "free_y") + 
+  scale_fill_manual('Cell Types',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+xlab('Patients')+ylab('Percentage of cells')
+
+summary_bars
+
+#chisquare test (patient, type, method effects)
+print('Square test and effect size= -- patient, type, method')
+chi = chisq.test(table(metadata$patient,metadata$predicted.ann_level_1))
+chi
+sqrt(chi$statistic/nrow(metadata))
+
+chi = chisq.test(table(metadata$type,metadata$predicted.ann_level_1))
+chi
+sqrt(chi$statistic/nrow(metadata))
+
+chi = chisq.test(table(metadata$method,metadata$predicted.ann_level_1))
+chi
+sqrt(chi$statistic/nrow(metadata))
+```
+
+
+# annotation performance as a function of type, method & level
+```{r fraction unknowns}
+sum(table(metadata$predicted.ann_level_1)[1:4]) / sum(table(metadata$predicted.ann_level_1))
+
+
+
+mean_scores_temp <- metadata %>% 
+  group_by(type,method,samplename) %>% 
+  summarise(level1=length(predicted.ann_level_1.score[predicted.ann_level_1 != 'None'&predicted.ann_level_1 != 'Unclassified'])/length(predicted.ann_level_1.score),
+            level2=length(predicted.ann_level_2.score[predicted.ann_level_2 != 'None'&predicted.ann_level_2 != 'Unclassified'])/length(predicted.ann_level_2.score),
+            level3=length(predicted.ann_level_3.score[predicted.ann_level_3 != 'None'&predicted.ann_level_3 != 'Unclassified'])/length(predicted.ann_level_3.score),
+            level4=length(predicted.ann_level_4.score[predicted.ann_level_4 != 'None'&predicted.ann_level_4 != 'Unclassified'])/length(predicted.ann_level_4.score),
+            level5=length(predicted.ann_level_5.score[predicted.ann_level_5 != 'None'&predicted.ann_level_5 != 'Unclassified'])/length(predicted.ann_level_5.score)) %>%
+  pivot_longer(names_to = "levels",cols = 4:8)
+
+mean_scores = mean_scores_temp %>% group_by(type,method,levels) %>% summarise(val = mean(value))
+
+mean_scores$levels[mean_scores$levels == 'finest'] = 'finest level'
+
+mean_scores$annotation_level = factor(mean_scores$levels, level =c('level1','level2','level3','level4','level5'))
+
+#mean_scores = mean_scores[mean_scores$method!='immune depleted cells',]
+
+plot_annot_fractions<-ggplot(mean_scores, aes(x=type, y=val,group=method)) +
+  geom_line(aes(color=method),linetype = "dashed")+
+  geom_point(aes(color=method),size = 3) +
+  facet_wrap(~annotation_level,nrow = 1, ncol = 5)+
+  xlab('') +
+  ggtitle('Annotation efficacy') + ylab('Fraction of annotated cells') + 
+  theme_bw()+ 
+  theme(legend.position='bottom') 
+
+plot_annot_fractions
+
+
+#pdf(file.path(params$datapath,'../results/Figures_July2023/Figure3_annotation_scores24.pdf'),width = 8,height = 7)
+#plot_annot_fractions #/ plot_annot_score +  plot_annotation(tag_levels = 'A')
+#dev.off()
+
+#statistic test (all effects are significant)
+print(anova(lm(value~method*type*levels,mean_scores_temp)))
+```
+
+
+
+```{r summary T/N finest, message= T}
+#how many cell types
+dim(metadata %>% 
+            group_by(predicted.ann_level_3) %>%
+            summarise(n = length(predicted.ann_level_3),.groups='keep') %>% 
+            filter(n > 100))
+
+#summarise your data
+data_summarised = metadata %>% 
+  group_by(predicted.ann_level_1,predicted.ann_level_3,method,type) %>%
+  summarise(n = length(predicted.ann_level_3),.groups='keep') %>% 
+  filter(n > 100)
+
+
+data_summarised$method[data_summarised$method == 'immune depleted cells'] = 'Immune\ndepleted\ncells'
+
+data_summarised$method = factor(data_summarised$method, levels = c('Cell','Immune\ndepleted\ncells','Nucleus'))
+
+# Stacked barplot with multiple groups
+high_level_colors = c(RColorBrewer::brewer.pal(n = 5, name = "Set1"))
+bargplots = list()
+bargplots[[1]] = ggplot(data=data_summarised, aes(x=method, y=n, fill=predicted.ann_level_1)) +
+  geom_bar(stat="identity") + 
+  scale_fill_manual('Cell Types Annotations',values=high_level_colors)+ 
+  facet_wrap(~type,nrow = 1, ncol = 2) +
+  ggtitle('Cell Types ~ level1') + ylab("Number of Cells")
+  
+#
+celltypes = c('Endothelial','Epithelial','Immune','Stroma')
+
+for(i in seq_along((celltypes)))
+  {
+  data = data_summarised[data_summarised[,1]==celltypes[i],]
+  rgb.palette <- colorRampPalette(c('black',high_level_colors[i], "white"),space = "rgb")
+  colors = rgb.palette(length(unique(data$predicted.ann_level_3))-1)
+  colors[length(colors)+1] = 'orange'
+
+  p = ggplot(data=data, aes(x=method, y=n, fill=predicted.ann_level_3)) +
+    geom_bar(stat="identity") +
+    scale_fill_manual('Cell Types Annotations',values=colors)+ 
+    facet_wrap(~type,nrow = 1, ncol = 2) +
+    ggtitle(paste0(celltypes[i],' ~ level3')) + ylab("")
+
+  bargplots[[i+1]] = p
+    }
+
+#pdf(file.path(params$datapath,'../results/FigureS1_cell_type_annotation_fine_TN.pdf'),width = 20,height = 12)
+bargplots[[1]]+(bargplots[[2]]/bargplots[[3]])+(bargplots[[4]]/bargplots[[5]]) + plot_annotation(tag_levels = 'A')
+#dev.off()
+```
+
+# Tumor - normal lineplots
+```{r lineplots}
+#just make sure you have all the categories...
+#metadata_complete = metadata %>% complete(predicted.ann_level_3,method,type, patient)
+
+data_summarised = metadata %>% 
+  group_by(predicted.ann_level_1,predicted.ann_level_3,method,type, patient,unique) %>%
+  summarise(n = length(predicted.ann_level_3),.groups='keep')
+
+#add fractions
+data_summarised$fraction = 0
+
+for(i in seq_along(nb_cells_per_sample[,1])){
+  data_summarised$fraction[data_summarised$unique == nb_cells_per_sample$Var1[i]] =  data_summarised$n[data_summarised$unique == nb_cells_per_sample$Var1[i]] / nb_cells_per_sample$Freq[i]*100
+}
+
+data_summarised = data_summarised[data_summarised$predicted.ann_level_1 %in% c('Epithelial','Immune'), ]
+
+#clean up 
+data_summarised$predicted.ann_level_3[data_summarised$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymph. EC diff.'
+data_summarised$predicted.ann_level_3[data_summarised$predicted.ann_level_3=='Lymphatic EC mature'] = 'Lymph. EC matu.'
+data_summarised$predicted.ann_level_3[data_summarised$predicted.ann_level_3=='Multiciliated lineage'] = 'Multicil. lineage' 
+data_summarised$predicted.ann_level_3[data_summarised$predicted.ann_level_3=='Innate lymphoid cell NK'] = 'lymphoid cell NK' 
+
+#remove immune-depleted cells
+data_summarised = data_summarised[data_summarised$method!='immune depleted cells',]
+
+
+#clean-up a bit
+data_summarised = data_summarised[!(data_summarised$predicted.ann_level_3 %in% c('SM activated stress response','None','Submucosal Secretory','Basal')),]
+
+
+data_summarised2 = data_summarised %>% 
+  group_by(predicted.ann_level_1,predicted.ann_level_3,method,patient) %>%
+  summarise(fractions = fraction[type=='Tumor']/fraction[type=='Normal'],.groups='keep')
+
+#clean-up a bit 
+data_summarised2 = data_summarised2[data_summarised2$predicted.ann_level_3 != 'None',]
+
+
+
+
+#boxplot
+tumor_normal_transition = ggplot(data_summarised2, aes(x=predicted.ann_level_3,y=fractions,fill=method)) +  
+    geom_boxplot(varwidth=T) + 
+     geom_hline(yintercept=1, linetype="dashed", color = "black") +
+    facet_grid( . ~predicted.ann_level_1, scales = "free_x", space = "free_x",switch = 'y') + scale_y_continuous(trans='log10',breaks = c(0.01,0.1,1,10,100), label = c(0.01,0.1,1,10,100)) +
+  ylab('Cells in Tumor / cells in Normal') +
+  xlab('Level3 annotation') +
+  scale_fill_manual(values = hue_pal()(3)[c(1,3)])+
+  ggtitle('Normal -> Tumor transition (ratio)') +  
+  theme_bw()+
+     theme(strip.background = element_rect(fill="lightgray",color= 'lightgray'),strip.text.x = element_text(size = 8),legend.position='none',axis.title.x=element_blank(),axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+
+
+###summarise for a lineplots
+data_summarised_fraction =  data_summarised %>% 
+  group_by(predicted.ann_level_1,predicted.ann_level_3,method,type) %>%
+  summarise(fraction = mean(fraction),.groups='keep')
+
+#clean-up a bit
+#data_summarised_fraction = data_summarised_fraction[!(data_summarised_fraction$predicted.ann_level_3 %in% c('SM activated stress response','None','Submucosal Secretory','Basal')),]
+
+
+
+#plot
+lineplots <- ggplot(data_summarised_fraction, aes(x=type, y=fraction, group=method)) +
+  geom_line(aes(color=method))+
+  geom_point(aes(color=method)) + 
+  facet_wrap(predicted.ann_level_1~predicted.ann_level_3,nrow = 5, ncol = 3, scales = "free_y") +
+  ggtitle('Normal -> Tumor transition (percentage)') + 
+  scale_color_manual(values = hue_pal()(3)[c(1,3)])+
+  ylab("Percentage of total cellls in dataset") +
+  xlab("") +
+  theme_bw()+
+  theme(strip.background = element_rect(fill="lightgray",colour = 'lightgray'),strip.text.x = element_text(size = 8,margin=margin()),legend.position='bottom')
+
+  
+pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure8_cells24.pdf')),width = 12,height = 8)
+ ((tumor_normal_transition + lineplots)/guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
+dev.off()
+```
+
+# patient specific stats
+```{r patient plots}
+patient_specific = metadata %>% group_by(patient,method,type) %>% summarise(cells = length(nFeature_RNA),meangenes = mean(nFeature_RNA))
+
+patient_specific$patient2 = paste0('patient',patient_specific$patient)
+
+patient_specific$patient2[patient_specific$patient2=='patient4'] = 'patient1'
+patient_specific$patient2[patient_specific$patient2=='patient6'] = 'patient2'
+patient_specific$patient2[patient_specific$patient2=='patient8'] = 'patient3'
+patient_specific$patient2[patient_specific$patient2=='patient10'] = 'patient4'
+
+patient_specific$patient2 = factor(patient_specific$patient2,level = c('patient1','patient2','patient3','patient4'))
+
+#nb cells
+table(metadata$method)
+
+#mean cells
+patient_specific %>% group_by(method) %>% summarise(mcells = mean(cells))
+mean(patient_specific$cells)
+
+#median genes
+metadata %>% group_by(method) %>% summarise(mgenes = mean(nFeature_RNA))
+metadata %>% summarise(mgenes = mean(nFeature_RNA))
+
+
+p_cells = ggplot(data=patient_specific, aes(x=type, y=cells, fill=method)) +
+    geom_bar(position="dodge", stat="identity") +
+    #scale_fill_manual('supertop',values=colors)+ 
+    facet_wrap(~patient2,nrow = 1, ncol = 4) +
+    ggtitle('Patients ~ cells') + xlab('') +ylab("Number of cells") +
+    theme_bw() +
+    theme(axis.title = element_text(size = 8),legend.position = 'none')
+
+p_genes = ggplot(data=patient_specific, aes(x=type, y=meangenes, fill=method)) +
+    geom_bar(position="dodge", stat="identity") +
+    #scale_fill_manual('supertop',values=colors)+ 
+    facet_wrap(~patient2,nrow = 1, ncol = 4) +
+    xlab('')+
+    ggtitle('Patients ~ genes') + ylab("Mean number of genes per cell")+
+    theme_bw() +
+    theme(axis.title = element_text(size = 8),legend.position = 'none')
+
+
+table(metadata$method)
+
+pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure2.pdf')),width = 11,height = 6)
+((p_cells / p_genes  | plot_annot_fractions)/guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
+dev.off()
+```
+
+
+```{r cnv annotation correlation, echo=FALSE}
+metadata_subset = metadata[metadata$method!='immune depleted cells',]
+metadata_subset = metadata_subset[metadata_subset$type!='Normal',]
+metadata_subset$cnv_score_log = log(metadata_subset$cnv_score,10)
+#metadata_subset = metadata_subset[sample(1:20000,1000),]
+
+cnv_annot_corplot = ggplot(data = metadata_subset, aes(y= cnv_score,x = predicted.ann_level_3.score)) +
+  scale_y_continuous(trans= 'log10') +
+  facet_grid(.~method) +
+  geom_hex(bins = 50) + 
+  geom_smooth(method = 'lm',span =0.1,col = 'deeppink') +
+  ylab('CNV score (log10)') +
+  xlab('level 3 annotation score') +
+  theme_bw()
+  
+pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/FigS3.pdf')),width = 8,height = 4)
+cnv_annot_corplot
+dev.off()
+```
+
+
+
+```{r silhouette,  include= F}
+# silhouette metric
+combined_permethodN = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
+combined_permethodT = readRDS(file.path(params$datapath,'combined_permethod_pertypeT24.rds'))
+combined_permethodD = readRDS(file.path(params$datapath,'combined_depletion_pertissue.rds'))
+combined_permethodN = relabeler(combined_permethodN)
+combined_permethodT = relabeler(combined_permethodT)
+combined_permethodD = relabeler(combined_permethodD)
+
+silhouettes = list()
+sils_summarised=list()
+library(cluster, quietly = TRUE)
+
+type = c('Normal','Tumor')
+method = c('cell','nucleus','depleted')
+
+for(i in 1:6){
+  if(i %in% c(1,2)) dataset = combined_permethodN[[i]]
+  if(i %in% c(3,4)) dataset = combined_permethodT[[i-2]]
+  if(i %in% c(5,6)) dataset = combined_permethodD[[i-4]]
+  
+  dist.matrix <- dist(x = Embeddings(object = dataset[['proj.umap']]))
+  predicted.ann_level_13 <- paste0(dataset@meta.data$predicted.ann_level_1,'___',dataset@meta.data$predicted.ann_level_3)
+  sil <- as.data.frame(silhouette(x = as.numeric(x = as.factor(x = predicted.ann_level_13)), dist = dist.matrix))
+  sil$predicted.ann_level_13 = predicted.ann_level_13
+  if(i %in% c(1,2,5)) sil$type = type[1]
+  if(i %in% c(3,4,6)) sil$type = type[2]
+  if(i %in% c(1,3)) sil$method = method[1]
+  if(i %in% c(2,4)) sil$method = method[2]
+  if(i %in% c(5,6)) sil$method = method[3]
+  
+  silhouettes[[i]] = sil
+  sils_summarised[[i]] = silhouettes[[i]] %>% group_by(predicted.ann_level_13,method,type) %>% summarise(mean = mean(sil_width))
+}
+
+
+#sils_summarised[[i]] = silhouettes[[i]] %>% group_by(predicted.ann_level_13) %>% summarise(mean = mean(sil_width))
+
+silhouettes_anova = rbind(silhouettes[[1]],silhouettes[[2]],silhouettes[[3]],silhouettes[[4]],silhouettes[[5]],silhouettes[[6]])
+silhouettes_anova = silhouettes_anova[silhouettes_anova$predicted.ann_level_13!= 'Unclassified___Unclassified',]
+
+#statistical tests
+anova(lm(sil_width~method*type, data = silhouettes_anova))
+
+#medians sil by tumor / normal  without the depleted
+silhouettes_anova_nodepl=silhouettes_anova[silhouettes_anova$method != 'depleted',]
+silhouettes_anova_nodepl %>% 
+   group_by(type) %>%
+   summarise(n = median(sil_width,na.rm =T),.groups='keep') 
+
+#plot
+sil_plot = ggplot(silhouettes_anova, aes(x=method, y=sil_width, fill=method)) +
+  geom_boxplot(position="dodge",outlier.shape = NA) +
+  ylab("Silhouette Index")  +
+  facet_wrap(~type)+ylim(-1,1)+
+  theme_bw() + 
+  theme(axis.text.x = element_blank(),legend.position = "right") 
+
+
+sil_plot
+
+
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/FigS2.pdf'),width = 6,height = 4) 
+sil_plot
+dev.off()
+```
+
+
+
+# celltypes all  
+```{r suptable all cell types}
+library(arrow)
+library(Azimuth)
+# Load the reference
+version2.0.1="C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/lung_2.0.1/data/annotations.parquet"
+reference_path = "C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/lung_2.0.0/"
+reference <- LoadReference(path = reference_path)
+
+annotations <- read_parquet(version2.0.1)
+annotations = annotations[annotations$`__index_level_0__` %in% rownames(reference$map@meta.data),]
+
+reference$map@meta.data$ann_level_1 = annotations$ann_level_1
+reference$map@meta.data$ann_level_2 = annotations$ann_level_2
+reference$map@meta.data$ann_level_3 = annotations$ann_level_3
+reference$map@meta.data$ann_level_4 = annotations$ann_level_4
+reference$map@meta.data$ann_level_5 = annotations$ann_level_5
+reference$map@meta.data$ann_finest_level = annotations$ann_finest_level
+
+
+reference_table = data.frame(finest_level = names(table(reference$map@meta.data$ann_finest_level)), level1='None',level2='None',level3='None',level4='None',level5='None')  
+reference_table = rbind(reference_table,c('Hematopoietic stem cells','Immune','Hematopoietic stem cells','None','None','None'))
+
+
+for(i in 1:60){
+      finest_temp  = reference_table$finest_level[i]
+    reference_table[i,2] = head(reference$map@meta.data$ann_level_1[reference$map@meta.data$ann_finest_level == finest_temp],1)
+    reference_table[i,3] = head(reference$map@meta.data$ann_level_2[reference$map@meta.data$ann_finest_level == finest_temp],1)
+    reference_table[i,4] = head(reference$map@meta.data$ann_level_3[reference$map@meta.data$ann_finest_level == finest_temp],1)
+    reference_table[i,5] = head(reference$map@meta.data$ann_level_4[reference$map@meta.data$ann_finest_level == finest_temp],1)
+    reference_table[i,6] = head(reference$map@meta.data$ann_level_5[reference$map@meta.data$ann_finest_level == finest_temp],1)
+  }
+
+metadata_table = as.data.frame.matrix(table(metadata$predicted.ann_finest_level,metadata$method))
+metadata_table = data.frame(finest_level = rownames(metadata_table),metadata_table)
+
+table = merge(reference_table,metadata_table,all.x =T, all.y =T)
+
+table = table[,c(2,3,4,5,6,1,7,8,9)]
+table = table[order(table[,1],table[,2],table[,3],table[,4],table[,5]),]
+
+table$Nucleus[is.na(table$Nucleus)] = 0
+table$Cell[is.na(table$Cell)] = 0
+table$immune.depleted.cells[is.na(table$immune.depleted.cells)] = 0
+
+table = table[-62,]
+#table = table[rowSums(table[,7:9])>100,]
+
+write.csv(table,file.path(params$datapath,'../results/Figures_Oct2023/annotation_table_finest.csv'),row.names = F)
+```
+
+```{r datatress, message= T}
+library(data.tree)
+
+metadata$method = as.factor(metadata$method)
+metadata$type = as.factor(metadata$type)
+
+hlca = acme <- Node$new("HLCA")
+
+hlca$Cell_Normal = table(metadata$method,metadata$type)[1,1]
+hlca$depleted_Normal = table(metadata$method,metadata$type)[2,1]
+hlca$Nucleus_Normal = table(metadata$method,metadata$type)[3,1]
+
+hlca$Cell_Tumor = table(metadata$method,metadata$type)[1,2]
+hlca$depleted_Tumor = table(metadata$method,metadata$type)[2,2]
+hlca$Nucleus_Tumor = table(metadata$method,metadata$type)[3,2]
+
+hlca$AddChild("Endothelial")
+hlca$AddChild("Epithelial")
+hlca$AddChild("Immune")
+hlca$AddChild("Stroma")
+hlca$annotlevel = 'Human Lung'
+
+#for(i in 1:5){
+#hlca$children[[i]]$Cell = table(metadata$method[metadata$predicted.ann_level_1 == hlca$children[[i]]$name])[1]
+#hlca$children[[i]]$depleted = table(metadata$method[metadata$predicted.ann_level_1 == hlca$children[[i]]$name])[2]
+#hlca$children[[i]]$Nucleus = table(metadata$method[metadata$predicted.ann_level_1 == hlca$children[[i]]$name])[3]
+#}
+
+
+#level2
+for(i in seq_along(hlca$children))
+{
+  temp_names = unique(table$level2[table$level1==hlca$children[[i]]$name])
+  temp_names = temp_names[temp_names!='None']
+  #temp_names = c(temp_names,'Unclassified')
+  
+  metadata_sub = metadata[metadata$predicted.ann_level_1 == hlca$children[[i]]$name,]
+  
+  hlca$children[[i]]$Cell_Normal =  ifelse(is.na(table(metadata_sub$method,metadata_sub$type)[1,1]),0,table(metadata_sub$method,metadata_sub$type)[1,1])
+  hlca$children[[i]]$depleted_Normal =  ifelse(is.na(table(metadata_sub$method,metadata_sub$type)[2,1]),0,table(metadata_sub$method,metadata_sub$type)[2,1])
+  hlca$children[[i]]$Nucleus_Normal =  ifelse(is.na(table(metadata_sub$method,metadata_sub$type)[3,1]),0,table(metadata_sub$method,metadata_sub$type)[3,1])
+  
+  hlca$children[[i]]$Cell_Tumor =  ifelse(is.na(table(metadata_sub$method,metadata_sub$type)[1,2]),0,table(metadata_sub$method,metadata_sub$type)[1,2])
+  hlca$children[[i]]$depleted_Tumor =  ifelse(is.na(table(metadata_sub$method,metadata_sub$type)[2,2]),0,table(metadata_sub$method,metadata_sub$type)[2,2])
+  hlca$children[[i]]$Nucleus_Tumor =  ifelse(is.na(table(metadata_sub$method,metadata_sub$type)[3,2]),0,table(metadata_sub$method,metadata_sub$type)[3,2])
+  
+  hlca$children[[i]]$annotlevel = '1'
+  
+  for(j in seq_along(temp_names))
+  {
+    hlca$children[[i]]$AddChild(temp_names[j]) 
+
+    temp_names2=unique(table$level3[table$level2==hlca$children[[i]]$children[[j]]$name])
+    none_check =ifelse(length(temp_names2[temp_names2== 'None'])==1,T,F)
+    temp_names2 = temp_names2[temp_names2!='None']
+    metadata_sub2 = metadata_sub[metadata_sub$predicted.ann_level_2 == hlca$children[[i]]$children[[j]]$name,]
+    
+    hlca$children[[i]]$children[[j]]$Cell_Normal =  ifelse(is.na(table(metadata_sub2$method,metadata_sub2$type)[1,1]),0,table(metadata_sub2$method,metadata_sub2$type)[1,1])
+    hlca$children[[i]]$children[[j]]$depleted_Normal =   ifelse(is.na(table(metadata_sub2$method,metadata_sub2$type)[2,1]),0,table(metadata_sub2$method,metadata_sub2$type)[2,1])
+    hlca$children[[i]]$children[[j]]$Nucleus_Normal =   ifelse(is.na(table(metadata_sub2$method,metadata_sub2$type)[3,1]),0,table(metadata_sub2$method,metadata_sub2$type)[3,1])
+    
+    hlca$children[[i]]$children[[j]]$Cell_Tumor =  ifelse(is.na(table(metadata_sub2$method,metadata_sub2$type)[1,2]),0,table(metadata_sub2$method,metadata_sub2$type)[1,2])
+    hlca$children[[i]]$children[[j]]$depleted_Tumor =   ifelse(is.na(table(metadata_sub2$method,metadata_sub2$type)[2,2]),0,table(metadata_sub2$method,metadata_sub2$type)[2,2])
+    hlca$children[[i]]$children[[j]]$Nucleus_Tumor =   ifelse(is.na(table(metadata_sub2$method,metadata_sub2$type)[3,2]),0,table(metadata_sub2$method,metadata_sub2$type)[3,2])
+    
+    hlca$children[[i]]$children[[j]]$annotlevel = '2'
+    
+    if(length(temp_names2)==0) hlca$children[[i]]$children[[j]]$finest = 'Y' 
+    if(length(temp_names2)>0 & none_check) hlca$children[[i]]$children[[j]]$finest = 'Y'
+    
+    if(length(temp_names2)>0)
+    {
+    
+    for(k in seq_along(temp_names2))
+    {
+      hlca$children[[i]]$children[[j]]$AddChild(temp_names2[k]) 
+      temp_names3=unique(table$level4[table$level3==hlca$children[[i]]$children[[j]]$children[[k]]$name])
+      none_check =ifelse(length(temp_names3[temp_names3== 'None'])==1,T,F)
+      temp_names3 = temp_names3[temp_names3!='None']
+      metadata_sub3 = metadata_sub2[metadata_sub2$predicted.ann_level_3 == hlca$children[[i]]$children[[j]]$children[[k]]$name,]
+      
+      hlca$children[[i]]$children[[j]]$children[[k]]$Cell_Normal =  ifelse(is.na(table(metadata_sub3$method,metadata_sub3$type)[1,1]),0,table(metadata_sub3$method,metadata_sub3$type)[1,1])
+      hlca$children[[i]]$children[[j]]$children[[k]]$depleted_Normal =  ifelse(is.na(table(metadata_sub3$method,metadata_sub3$type)[2,1]),0,table(metadata_sub3$method,metadata_sub3$type)[2,1])
+      hlca$children[[i]]$children[[j]]$children[[k]]$Nucleus_Normal =  ifelse(is.na(table(metadata_sub3$method,metadata_sub3$type)[3,1]),0,table(metadata_sub3$method,metadata_sub3$type)[3,1])
+      
+      hlca$children[[i]]$children[[j]]$children[[k]]$Cell_Tumor =  ifelse(is.na(table(metadata_sub3$method,metadata_sub3$type)[1,2]),0,table(metadata_sub3$method,metadata_sub3$type)[1,2])
+      hlca$children[[i]]$children[[j]]$children[[k]]$depleted_Tumor =  ifelse(is.na(table(metadata_sub3$method,metadata_sub3$type)[2,2]),0,table(metadata_sub3$method,metadata_sub3$type)[2,2])
+      hlca$children[[i]]$children[[j]]$children[[k]]$Nucleus_Tumor =  ifelse(is.na(table(metadata_sub3$method,metadata_sub3$type)[3,2]),0,table(metadata_sub3$method,metadata_sub3$type)[3,2])
+      
+      hlca$children[[i]]$children[[j]]$children[[k]]$annotlevel = '3'
+      
+      
+      if(length(temp_names3)==0)  hlca$children[[i]]$children[[j]]$children[[k]]$finest = 'Y'
+      if(length(temp_names3)>0 & none_check) hlca$children[[i]]$children[[j]]$children[[k]]$finest = 'Y'
+      if(length(temp_names3)>0)
+      {
+      for(l in seq_along(temp_names3))
+      {
+        hlca$children[[i]]$children[[j]]$children[[k]]$AddChild(temp_names3[l])
+        
+        temp_names4 = unique(table$level5[table$level4==hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$name])
+        none_check = ifelse(length(temp_names4[temp_names4== 'None'])==1,T,F)
+        temp_names4 = temp_names4[temp_names4!='None']
+        
+        metadata_sub4 = metadata_sub3[metadata_sub3$predicted.ann_level_4 == hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$name,]
+        
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Cell_Normal = ifelse(is.na(table(metadata_sub4$method,metadata_sub4$type)[1,1]),0,table(metadata_sub4$method,metadata_sub4$type)[1,1])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$depleted_Normal = ifelse(is.na(table(metadata_sub4$method,metadata_sub4$type)[2,1]),0,table(metadata_sub4$method,metadata_sub4$type)[2,1])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Nucleus_Normal = ifelse(is.na(table(metadata_sub4$method,metadata_sub4$type)[3,1]),0,table(metadata_sub4$method,metadata_sub4$type)[3,1])
+        
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Cell_Tumor = ifelse(is.na(table(metadata_sub4$method,metadata_sub4$type)[1,2]),0,table(metadata_sub4$method,metadata_sub4$type)[1,2])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$depleted_Tumor = ifelse(is.na(table(metadata_sub4$method,metadata_sub4$type)[2,2]),0,table(metadata_sub4$method,metadata_sub4$type)[2,2])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Nucleus_Tumor = ifelse(is.na(table(metadata_sub4$method,metadata_sub4$type)[3,2]),0,table(metadata_sub4$method,metadata_sub4$type)[3,2])
+        
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$annotlevel = '4'
+        
+        if(length(temp_names4)==0)  hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$finest = 'Y'
+        if(length(temp_names4)>0 & none_check) hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$finest = 'Y'
+        if(length(temp_names4)>0)
+        {
+        for(m in seq_along(temp_names4))
+        {
+           hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$AddChild(temp_names4[m])
+           
+           metadata_sub5 = metadata_sub4[metadata_sub4$predicted.ann_level_5 == hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$name,]
+          
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$Cell_Normal = ifelse(is.na(table(metadata_sub5$method,metadata_sub5$type)[1,1]),0,table(metadata_sub5$method,metadata_sub5$type)[1,1])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$depleted_Normal = ifelse(is.na(table(metadata_sub5$method,metadata_sub5$type)[2,1]),0,table(metadata_sub5$method,metadata_sub5$type)[2,1])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$Nucleus_Normal =  ifelse(is.na(table(metadata_sub5$method,metadata_sub5$type)[3,1]),0,table(metadata_sub5$method,metadata_sub5$type)[3,1])
+        
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$Cell_Tumor = ifelse(is.na(table(metadata_sub5$method,metadata_sub5$type)[1,2]),0,table(metadata_sub5$method,metadata_sub5$type)[1,2])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$depleted_Tumor = ifelse(is.na(table(metadata_sub5$method,metadata_sub5$type)[2,2]),0,table(metadata_sub5$method,metadata_sub5$type)[2,2])
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$Nucleus_Tumor =  ifelse(is.na(table(metadata_sub5$method,metadata_sub5$type)[3,2]),0,table(metadata_sub5$method,metadata_sub5$type)[3,2])
+        
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$annotlevel = '5'
+        hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$finest = 'Y'
+        
+        }
+        }  
+      }
+      }
+    }
+    }  
+  }
+}
+
+###can we add nones / unknowns in this loop? 
+#
+for(i in seq_along(hlca$children))
+  {
+  if(length(seq_along(hlca$children[[i]]$children))>0)
+    {
+    
+    metadata_sub = metadata[metadata$predicted.ann_level_1 == hlca$children[[i]]$name,]
+    metadata_sub_unk = metadata_sub[metadata_sub$predicted.ann_level_2 =='Unclassified' | metadata_sub$predicted.ann_level_2 =='None',]
+    
+    hlca$children[[i]]$AddChild('Unclassified')
+    hlca$children[[i]]$Unclassified$Cell_Normal = ifelse(is.na(table(metadata_sub_unk$method,metadata_sub_unk$type)[1,1]),0,table(metadata_sub_unk$method,metadata_sub_unk$type)[1,1])
+    hlca$children[[i]]$Unclassified$depleted_Normal = ifelse(is.na(table(metadata_sub_unk$method,metadata_sub_unk$type)[2,1]),0,table(metadata_sub_unk$method,metadata_sub_unk$type)[2,1])
+    hlca$children[[i]]$Unclassified$Nucleus_Normal =  ifelse(is.na(table(metadata_sub_unk$method,metadata_sub_unk$type)[3,1]),0,table(metadata_sub_unk$method,metadata_sub_unk$type)[3,1])
+    
+    hlca$children[[i]]$Unclassified$Cell_Tumor = ifelse(is.na(table(metadata_sub_unk$method,metadata_sub_unk$type)[1,2]),0,table(metadata_sub_unk$method,metadata_sub_unk$type)[1,2])
+    hlca$children[[i]]$Unclassified$depleted_Tumor = ifelse(is.na(table(metadata_sub_unk$method,metadata_sub_unk$type)[2,2]),0,table(metadata_sub_unk$method,metadata_sub_unk$type)[2,2])
+    hlca$children[[i]]$Unclassified$Nucleus_Tumor =  ifelse(is.na(table(metadata_sub_unk$method,metadata_sub_unk$type)[3,2]),0,table(metadata_sub_unk$method,metadata_sub_unk$type)[3,2])
+    
+    
+    hlca$children[[i]]$Unclassified$annotlevel = '2'
+    
+    for(j in 1:(length(hlca$children[[i]]$children)-1))
+      {
+      if(length(seq_along(hlca$children[[i]]$children[[j]]$children))>0)
+        {
+        metadata_sub2 = metadata_sub[metadata_sub$predicted.ann_level_2 == hlca$children[[i]]$children[[j]]$name,]
+        metadata_sub2_unk = metadata_sub2[metadata_sub2$predicted.ann_level_3 =='Unclassified' | metadata_sub2$predicted.ann_level_3 =='None',]
+        
+        if(nrow(metadata_sub2_unk)>0){
+          hlca$children[[i]]$children[[j]]$AddChild('Unclassified')
+          hlca$children[[i]]$children[[j]]$Unclassified$Cell_Normal = ifelse(is.na(table(metadata_sub2_unk$method,metadata_sub2_unk$type)[1,1]),0,table(metadata_sub2_unk$method,metadata_sub2_unk$type)[1,1])
+          hlca$children[[i]]$children[[j]]$Unclassified$depleted_Normal =  ifelse(is.na(table(metadata_sub2_unk$method,metadata_sub2_unk$type)[2,1]),0,table(metadata_sub2_unk$method,metadata_sub2_unk$type)[2,1])
+          hlca$children[[i]]$children[[j]]$Unclassified$Nucleus_Normal = ifelse(is.na(table(metadata_sub2_unk$method,metadata_sub2_unk$type)[3,1]),0,table(metadata_sub2_unk$method,metadata_sub2_unk$type)[3,1])
+          
+          hlca$children[[i]]$children[[j]]$Unclassified$Cell_Tumor = ifelse(is.na(table(metadata_sub2_unk$method,metadata_sub2_unk$type)[1,2]),0,table(metadata_sub2_unk$method,metadata_sub2_unk$type)[1,2])
+          hlca$children[[i]]$children[[j]]$Unclassified$depleted_Tumor = ifelse(is.na(table(metadata_sub2_unk$method,metadata_sub2_unk$type)[2,2]),0,table(metadata_sub2_unk$method,metadata_sub2_unk$type)[2,2])
+          hlca$children[[i]]$children[[j]]$Unclassified$Nucleus_Tumor =  ifelse(is.na(table(metadata_sub2_unk$method,metadata_sub2_unk$type)[3,2]),0,table(metadata_sub2_unk$method,metadata_sub2_unk$type)[3,2])
+          
+          hlca$children[[i]]$children[[j]]$Unclassified$annotlevel = '3'
+          
+            for(k in 1:(length(hlca$children[[i]]$children[[j]]$children)-1))
+              {
+              if(length(seq_along(hlca$children[[i]]$children[[j]]$children[[k]]$children))>0)
+                {
+                metadata_sub3 = metadata_sub2[metadata_sub2$predicted.ann_level_3 == hlca$children[[i]]$children[[j]]$children[[k]]$name,]
+                metadata_sub3_unk = metadata_sub3[metadata_sub3$predicted.ann_level_4 =='Unclassified' | metadata_sub3$predicted.ann_level_4 =='None',]
+        
+                if(nrow(metadata_sub3_unk)>0){
+                  hlca$children[[i]]$children[[j]]$children[[k]]$AddChild('Unclassified')
+                  hlca$children[[i]]$children[[j]]$children[[k]]$Unclassified$Cell_Normal = ifelse(is.na(table(metadata_sub3_unk$method,metadata_sub3_unk$type)[1,1]),0,table(metadata_sub3_unk$method,metadata_sub3_unk$type)[1,1])
+                  hlca$children[[i]]$children[[j]]$children[[k]]$Unclassified$depleted_Normal = ifelse(is.na(table(metadata_sub3_unk$method,metadata_sub3_unk$type)[2,1]),0,table(metadata_sub3_unk$method,metadata_sub3_unk$type)[2,1])
+                  hlca$children[[i]]$children[[j]]$children[[k]]$Unclassified$Nucleus_Normal = ifelse(is.na(table(metadata_sub3_unk$method,metadata_sub3_unk$type)[3,1]),0,table(metadata_sub3_unk$method,metadata_sub3_unk$type)[3,1])
+                  
+                  hlca$children[[i]]$children[[j]]$children[[k]]$Unclassified$Cell_Tumor = ifelse(is.na(table(metadata_sub3_unk$method,metadata_sub3_unk$type)[1,2]),0,table(metadata_sub3_unk$method,metadata_sub3_unk$type)[1,2])
+                  hlca$children[[i]]$children[[j]]$children[[k]]$Unclassified$depleted_Tumor = ifelse(is.na(table(metadata_sub3_unk$method,metadata_sub3_unk$type)[2,2]),0,table(metadata_sub3_unk$method,metadata_sub3_unk$type)[2,2])
+                  hlca$children[[i]]$children[[j]]$children[[k]]$Unclassified$Nucleus_Tumor =  ifelse(is.na(table(metadata_sub3_unk$method,metadata_sub3_unk$type)[3,2]),0,table(metadata_sub3_unk$method,metadata_sub3_unk$type)[3,2])
+                  
+                  hlca$children[[i]]$children[[j]]$children[[k]]$Unclassified$annotlevel = '4'
+                  
+                   for(l in 1:(length(hlca$children[[i]]$children[[j]]$children[[k]]$children)-1))
+                  {
+                  if(length(seq_along(hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children))>0)
+                    {
+                    metadata_sub4 = metadata_sub3[metadata_sub3$predicted.ann_level_4 == hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$name,]
+                    metadata_sub4_unk = metadata_sub4[metadata_sub4$predicted.ann_level_5 =='Unclassified' | metadata_sub4$predicted.ann_level_5 =='None',]
+        
+                    if(nrow(metadata_sub4_unk)>0){
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$AddChild('Unclassified')
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Unclassified$Cell_Normal = ifelse(is.na(table(metadata_sub4_unk$method,metadata_sub4_unk$type)[1,1]),0,table(metadata_sub4_unk$method,metadata_sub4_unk$type)[1,1])
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Unclassified$depleted_Normal = ifelse(is.na(table(metadata_sub4_unk$method,metadata_sub4_unk$type)[2,1]),0,table(metadata_sub4_unk$method,metadata_sub4_unk$type)[2,1])
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Unclassified$Nucleus_Normal = ifelse(is.na(table(metadata_sub4_unk$method,metadata_sub4_unk$type)[3,1]),0,table(metadata_sub4_unk$method,metadata_sub4_unk$type)[3,1])
+                      
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Unclassified$Cell_Tumor = ifelse(is.na(table(metadata_sub4_unk$method,metadata_sub4_unk$type)[1,2]),0,table(metadata_sub4_unk$method,metadata_sub4_unk$type)[1,2])
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Unclassified$depleted_Tumor = ifelse(is.na(table(metadata_sub4_unk$method,metadata_sub4_unk$type)[2,2]),0,table(metadata_sub4_unk$method,metadata_sub4_unk$type)[2,2])
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Unclassified$Nucleus_Tumor = ifelse(is.na(table(metadata_sub4_unk$method,metadata_sub4_unk$type)[3,2]),0,table(metadata_sub4_unk$method,metadata_sub4_unk$type)[3,2])
+                      
+                      hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$Unclassified$annotlevel = '5'
+                      }
+                    }
+                  }
+                  
+                  
+                }
+              }
+            }
+          
+          
+          
+          }
+        }
+      }
+    }
+  }
+  
+  
+#final unknowns
+hlca$AddChild('Unclassified')
+
+metadata_sub = metadata[metadata$predicted.ann_level_1 =='Unclassified' | metadata$predicted.ann_level_1 =='None',]
+  
+hlca$Unclassified$Cell_Normal =table(metadata_sub$method,metadata_sub$type)[1,1]
+hlca$Unclassified$depleted_Normal = table(metadata_sub$method,metadata_sub$type)[2,1]
+hlca$Unclassified$Nucleus_Normal = table(metadata_sub$method,metadata_sub$type)[3,1]
+
+hlca$Unclassified$Cell_Tumor = table(metadata_sub$method,metadata_sub$type)[1,2]
+hlca$Unclassified$depleted_Tumor = table(metadata_sub$method,metadata_sub$type)[2,2]
+hlca$Unclassified$Nucleus_Tumor = table(metadata_sub$method,metadata_sub$type)[3,2]
+
+hlca$Unclassified$annotlevel = '1'
+
+#
+#print(hlca$Stroma,'Cell_Normal','depleted_Normal','Nucleus_Normal','Cell_Tumor','depleted_Tumor','Nucleus_Tumor','annotlevel','finest',limit =500)
+
+write.table(print(hlca,'Cell_Normal','Nucleus_Normal','depleted_Normal','Cell_Tumor','Nucleus_Tumor','depleted_Tumor','annotlevel','finest',limit =500),file.path(params$datapath,'../results/Figures_Oct2023/hierarchy_annotation.csv'),row.names = F,quote=F,sep=',')
+
+
+```
+
+
+
+# session info  
+```{r session, message= T}
+###session
+sessionInfo()
+```
+
+
+
+
+
+
+

@@ -1,0 +1,180 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(RColorBrewer)
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+
+source('../R/azimuth_analysis.R')
+
+source('../R/infercnv.R')
+```
+
+
+# Loading data  
+```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
+seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+
+seurat.objects = relabeler(seurat.objects)
+
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+
+metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
+
+metadata = relabeler(metadata)
+```
+
+
+
+
+
+# get data ready
+```{r session, message= T}
+Immune = c('LCP1','CD53','PTPRC','COTL1','CXCR4','GMFG','FCER1G','LAPTM5','SRGN','CD52')
+Epithelial = c('KRT7','PIGR','ELF3','CYB5A','KRT8','KRT19','TACSTD2','MUC1','S100A14','CXCL17')
+Endothelial = c('PTRF','CLDN5','AQP1','PECAM1','NPDC1','VWF','GNG11','RAMP2','IGFBP7','CLEC14A')
+Stroma = c('TPM2','DCN','MGP','SPARC','CALD1','LUM','TAGLN','IGFBP7','COL1A2','C1S')
+features = c('EPCAM', 'CLDN5', 'COL1A2','PTPRC')
+random100 = sample(seurat.objects[[1]]@assays$refAssay@data@Dimnames[[1]],100)
+  
+  
+all_features = unique(c(Immune,Epithelial,Endothelial,Stroma,features,random100))
+seurat.objects.subsetted = list()
+
+for(i in 1:24){
+  seurat.objects.subsetted[[i]] = subset(seurat.objects[[i]],features = all_features)
+}
+
+#combine
+combined = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)],merge.dr = 'proj.umap')
+
+#
+combined@meta.data$predicted.ann_level_3_simplified = combined@meta.data$predicted.ann_level_3
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3 %in% c('SM activated stress response','Submucosal Secretory')] = 'others'
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3 == 'None'] = 'Unclassified'
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3 == 'unknown'] = 'Unclassified'
+
+combined@meta.data$patient[combined@meta.data$patient == 4] = 1
+combined@meta.data$patient[combined@meta.data$patient == 6] = 2
+combined@meta.data$patient[combined@meta.data$patient == 8] = 3
+combined@meta.data$patient[combined@meta.data$patient == 10] = 4
+
+#
+
+
+
+```
+
+
+# Large UMAP of all cells.
+```{r plots, message= T}
+col = c(brewer.pal(n = 8, name = "Set1"),brewer.pal(n = 8, name = "Set3"),'darkblue','darkred','black','goldenrod4','turquoise4','gray')
+
+umap_theme = function(){
+  theme(legend.position = "right",axis.title = element_text(size = 12),axis.text = element_text(size = 12),
+          axis.ticks.x = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank()) 
+}
+
+dimplots_allcells = DimPlot(combined, reduction = "proj.umap", group.by = "predicted.ann_level_3_simplified",cols = col,pt.size=0.01,raster= F,order = F, label = T, label.size = 8, repel = T) + 
+    ggtitle('All cells/nuclei ~ level 3 annotation') +
+    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) + 
+    labs(color = "Cell Types (level3)") +
+    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+
+dimplots_type = DimPlot(combined, reduction = "proj.umap", group.by = "type",pt.size=0.01,raster= F,order = F, label.size = 8) + 
+    ggtitle('All cells/nuclei ~ Tissue type') +
+    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) +
+    labs(color = "Tissue type") +
+    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+
+dimplots_method = DimPlot(combined, reduction = "proj.umap", group.by = "method",pt.size=0.01,raster= F,order = F, label.size = 8) + 
+    ggtitle('All cells/nuclei ~ Experimental method') +
+    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) +
+    labs(color = "Method") +
+    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+
+dimplots_patient = DimPlot(combined, reduction = "proj.umap", group.by = "patient",cols = c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1],pt.size=0.01,raster= F,order = F,label.size = 8) + 
+    ggtitle('All cells/nuclei ~ Patients') +
+    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) +
+    labs(color = "Patients") +
+    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+
+
+png(file.path(params$datapath,'../results/Figures_Oct2023/UMAP_allcells.png'),width = 2000,height = 1500)
+(dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) + plot_annotation(tag_levels = 'A')
+dev.off()
+
+```
+
+# feature plots
+* Feature plots avec les marqueurs EPCAM, CLDN5, COL1A2 et PTPRC pourraient aussi illustrer les grands compartiments Epithelial, Endothelial, Stromal et Immune (panels E, F, G, H).
+```{r feature plots, message= T}
+
+combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
+
+for(i in 1:2) {
+  combined_permethod[[i]] <- AddModuleScore(object = combined_permethod[[i]], features = list(Immune), name = "Immune_module",nbin = 12,ctrl = 100)
+  combined_permethod[[i]] <- AddModuleScore(object = combined_permethod[[i]], features = list(Epithelial), name = "Epithelial_module",nbin = 12,ctrl = 100)
+  combined_permethod[[i]] <- AddModuleScore(object = combined_permethod[[i]], features = list(Endothelial), name = "Endothelial_module",nbin = 12,ctrl = 100)
+  combined_permethod[[i]] <- AddModuleScore(object = combined_permethod[[i]], features = list(Stroma), name = "Stroma_module",nbin = 12,ctrl = 100)
+}
+
+endo = 'CLDN5'
+epi = 'EPCAM'
+immune = 'PTPRC'
+stroma = 'COL1A2'
+cols = c('blue','gray','#FF0000')
+
+fplots = list()
+
+for(i in 1:2)
+  {
+  fplots[[(i*5) - 4]] = DimPlot(combined_permethod[[i]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = col,pt.size=0.01,raster= F,order = F, label = T, label.size = 7, repel = T)  + ggtitle(ifelse(i==1,'Normal ~ Cell','Normal ~ Nucleus')) + umap_theme() + theme(legend.position = "none")
+
+  fplots[[(i*5) - 3]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Immune_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Immune markers') + umap_theme()
+  fplots[[(i*5) - 2]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Epithelial_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Epithelial markers')+ umap_theme()
+  fplots[[(i*5) - 1]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Endothelial_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Endothelial markers')+ umap_theme()
+  fplots[[(i*5)]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Stroma_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Stroma markers')+ umap_theme()
+  
+  
+}
+
+
+#save
+png(file.path(params$datapath,'../results/Figures_Oct2023/Fig_S1.png'),width = 1560,height = 600)
+((fplots[[1]]|fplots[[2]]|fplots[[3]]|fplots[[4]]|fplots[[5]]) /
+(fplots[[6]]|fplots[[7]]|fplots[[8]]|fplots[[9]]|fplots[[10]])) + plot_annotation(tag_levels = 'A') + plot_layout(guides = 'collect')
+dev.off()
+```
+
+
+
+
+
+
+
+
+

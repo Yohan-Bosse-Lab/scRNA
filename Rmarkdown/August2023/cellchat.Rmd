@@ -26,17 +26,10 @@ options(stringsAsFactors = FALSE)
 
 # Loading data  
 ```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
-seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_CNV.rds"))
+#seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
 filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
 
-metadata = data.frame()
-cells = NULL
-for(i in 1:12)
-{
-  if(i>1) colnames(metadata) = colnames(seurat.objects[[i]]@meta.data) 
-  metadata = rbind(metadata,seurat.objects[[i]]@meta.data)
-  cells[i] = median(seurat.objects[[i]]@meta.data$nFeature_RNA)
-}
+metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
 
 metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
 
@@ -46,8 +39,40 @@ nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
 
 # get data
 ```{r cellchat}
-combined_permethodN = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
-combined_permethodT = readRDS(file.path(params$datapath,'combined_permethod_pertypeT24.rds'))
+#combined_permethodN = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
+#combined_permethodT = readRDS(file.path(params$datapath,'combined_permethod_pertypeT24.rds'))
+
+combined_permethodN_sub = combined_permethodN
+combined_permethodT_sub = combined_permethodT
+
+types = list()
+`%notin%` <- Negate(`%in%`)
+#to check the difference cell types in the four merged samples...
+for(i in 1:4){
+    if(i<3) meta = combined_permethodN[[i]]@meta.data$predicted.ann_level_3
+    if(i>2) meta = combined_permethodT[[i-2]]@meta.data$predicted.ann_level_3
+  types[[i]] = as.data.frame(table(meta))
+
+  celltypes_tokeep = c('AT1','AT2','T cell lineage','Fibroblasts','EC capillary','Macrophages')#,'unknown')
+  celltypes_toremove = c('Submucosal Secretory','None','SM activated stress response','Basal','unknown','Lymphatic EC mature') #'Innate lymphoid cell NK',
+ # if(i<3) combined_permethodN_sub[[i]] = subset(combined_permethodN[[i]], subset = predicted.ann_level_3 %in% celltypes_tokeep)
+ # if(i>2) combined_permethodN_sub[[i-2]] = subset(combined_permethodT[[i-2]], subset = predicted.ann_level_3 %in% celltypes_tokeep)
+  if(i<3) {combined_permethodN_sub[[i]] = subset(combined_permethodN[[i]], subset = predicted.ann_level_3 %notin% celltypes_toremove);
+    combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3[combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3=='Innate lymphoid cell NK'] = 'Lymph. cell NK';
+    combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3[combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymph. EC diff.'
+    }
+  if(i>2) {combined_permethodT_sub[[i-2]] = subset(combined_permethodT[[i-2]], subset = predicted.ann_level_3 %notin% celltypes_toremove);
+    combined_permethodT_sub[[i-2]]@meta.data$predicted.ann_level_3[combined_permethodT_sub[[i-2]]@meta.data$predicted.ann_level_3=='Innate lymphoid cell NK'] = 'Lymph. cell NK';
+    combined_permethodT_sub[[i-2]]@meta.data$predicted.ann_level_3[combined_permethodT_sub[[i-2]]@meta.data$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymph. EC diff.'
+  }
+}
+
+merged = merge(types[[1]],types[[2]],by = 'meta',all=T)
+merged = merge(merged,types[[3]],by = 'meta',all=T)
+merged = merge(merged,types[[4]],by = 'meta',all=T)
+colnames(merged)= c('types','normal-cell','normal-nuclei','tumor-cell','tumor-nuclei')
+#merged
+
 
 cellchats = list()
 common_cell_types = intersect(unique(combined_permethodN[[1]]@meta.data$predicted.ann_level_3),unique(combined_permethodN[[2]]@meta.data$predicted.ann_level_3))
@@ -55,8 +80,9 @@ common_cell_types = common_cell_types[common_cell_types!= 'unknown']
 
 
 for(i in 1:4){
-  if(i < 3) seurat.object = combined_permethodN[[i]]  
-  if(i > 2) seurat.object = combined_permethodT[[i-2]]   
+  if(i < 3) seurat.object = combined_permethodN_sub[[i]]  
+  if(i > 2) seurat.object = combined_permethodT_sub[[i-2]]
+#  if(i ==3) seurat.object = subset(seurat.object,subset = predicted.ann_level_2 != 'Submucosal Gland')
 
 data.input = seurat.object@assays$SCT
 meta = seurat.object@meta.data # a dataframe with rownames containing cell meta data
@@ -70,7 +96,7 @@ data.input = data.input[, cell.use]
 meta = meta[cell.use, ]
 
 #create cellchat dataset
-group.by = 'predicted.ann_level_2'
+group.by = 'predicted.ann_level_3'
 cellchat <- createCellChat(object = data.input, meta = meta, group.by = group.by)
 cellchat <- addMeta(cellchat, meta = meta)
 cellchat <- setIdent(cellchat, ident.use = group.by)
@@ -118,7 +144,7 @@ cellchats[[3]] = liftCellChat(cellchats[[3]], group.new)
 cellchats[[4]] = liftCellChat(cellchats[[4]], group.new)
 
 
-mergedcellchat <- mergeCellChat(cellchats, add.names = c('cell_Normal','nucleus_Normal','cell_Tumor','nucleus_Tumor'),cell.prefix = T)
+mergedcellchat <- mergeCellChat(cellchats, add.names = c('Cell~Normal','Nucleus~Normal','Cell~Tumor','Nucleus~Tumor'),cell.prefix = T)
 #mergedcellchat <- mergeCellChat(cellchats, add.names = c(1,2,3,4),cell.prefix = T)
 
 
@@ -126,66 +152,119 @@ mergedcellchat <- mergeCellChat(cellchats, add.names = c('cell_Normal','nucleus_
 stacked2 = rankNet(mergedcellchat, mode = "comparison", stacked = F, do.stat = TRUE,return.data = T,comparison = c(1,2,3,4),color.use = c(RColorBrewer::brewer.pal(n = 6, name = "Paired"))[c(1,2,5,6)])
 top10 = stacked2$signaling.contribution %>% group_by(name) %>% summarise(contribution = sum(contribution))
 top10 = top10$name[order(top10$contribution,decreasing = T)][1:10]
-stacked1 = rankNet(mergedcellchat, mode = "comparison", stacked = T, do.stat = TRUE,return.data = F,signaling=top10, comparison = c(1,2,3,4),color.use = c(RColorBrewer::brewer.pal(n = 6, name = "Paired"))[c(1,2,5,6)]) + theme(legend.position = 'none')
-stacked2 = rankNet(mergedcellchat, mode = "comparison", stacked = F, do.stat = TRUE,return.data = F,signaling=top10, comparison = c(1,2,3,4),color.use = c(RColorBrewer::brewer.pal(n = 6, name = "Paired"))[c(1,2,5,6)])
+stacked1 = rankNet(mergedcellchat, mode = "comparison", stacked = T, do.stat = TRUE,return.data = F,signaling=top10, comparison = c(1,2,3,4),color.use = c(RColorBrewer::brewer.pal(n = 6, name = "Paired"))[c(1,2,5,6)]) + theme(legend.position = 'right',legend.key.size = unit(0.2,'cm'),legend.text = element_text(size=8))
+stacked2 = rankNet(mergedcellchat, mode = "comparison", stacked = F, do.stat = TRUE,return.data = F,signaling=top10, comparison = c(1,2,3,4),color.use = c(RColorBrewer::brewer.pal(n = 6, name = "Paired"))[c(1,2,5,6)]) + theme(legend.position = 'top',legend.key.size = 4)
 
-pdf(file.path(params$datapath,'../results/Figures_July2023/cellchat_stacked.pdf'),width = 12,height = 8) 
-stacked2+ netAnalysis_contribution(cellchats[[1]], signaling = 'MHC-I') + netAnalysis_contribution(cellchats[[1]], signaling = 'CADM')
+#
+netMHC = netAnalysis_contribution(cellchats[[1]], signaling = 'MHC-I', title = "Contribution of top10 L-R pair",return.data = T) 
+
+data = dataMHC$LR.contribution[10:1,]
+data$name = as.character(data$name)
+data$name = factor(data$name,levels=data$name)
+netMHC = ggplot(data = data,aes(x=contribution,y=name)) + geom_bar(stat='identity') + theme_bw() +
+  ggtitle('Contribution of top10 L-R pairs')+
+  xlab('Relative Contribution')+ylab('') + 
+  theme(axis.line = element_line(colour = "black"),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank(),
+    panel.border = element_blank(),
+    panel.background = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.text.x=element_blank(),
+    axis.text.y = element_text(colour = 'black')) 
+
+netPTPRM = netAnalysis_contribution(cellchats[[1]], signaling = 'PTPRM')
+
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/cellchat/cellchat_stacked.pdf'),width = 4,height = 9) 
+stacked1 / netMHC / netPTPRM
 dev.off()
 
 #For some genes, like MHC, barplot shows little difference between Normal/tumor, big diff between cell/nuclei in the total strength of interactions. 
 #In network again we see little difference between Normal/tumor again big difference between cell-nucleus NORMAL.
-CellChatDB.ccc$interaction[CellChatDB.ccc$interaction$pathway_name=='MHC-I',]
-pdf(file.path(params$datapath,'../results/Figures_July2023/cellchat_MHC.pdf'),width = 12,height = 15) 
+gene = 'PTPRM'
+CellChatDB.ccc$interaction[CellChatDB.ccc$interaction$pathway_name==gene,]
+pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/cellchat/cellchat_',gene,'.pdf')),width = 6,height = 6) 
 par(mfrow = c(2,2), xpd=T)
-gene = 'MHC-I'
 wmax = getMaxWeight(cellchats, slot.name = c("netP"), attribute = gene)
-netVisual_aggregate(cellchats[[1]], signaling = gene, layout = "circle", edge.width.max = 50, signaling.name = paste0(gene,'~cell (Normal)'), edge.weight.max = wmax)
-netVisual_aggregate(cellchats[[2]], signaling = gene, layout = "circle", edge.width.max = 50, signaling.name = paste0(gene,'~nucleus (Normal)'), edge.weight.max = wmax)
-netVisual_aggregate(cellchats[[3]], signaling = gene, layout = "circle", edge.width.max = 50, signaling.name = paste0(gene,'~cell (Tumor)'), edge.weight.max = wmax)
-netVisual_aggregate(cellchats[[4]], signaling = gene, layout = "circle", edge.width.max = 50, signaling.name = paste0(gene,'~nucleus (Tumor)'), edge.weight.max = wmax)
+netVisual_aggregate(cellchats[[1]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~cell (Normal)'), edge.weight.max = wmax,top=0.1)
+netVisual_aggregate(cellchats[[2]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~nucleus (Normal)'), edge.weight.max = wmax,top=0.1)
+netVisual_aggregate(cellchats[[3]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~cell (Tumor)'), edge.weight.max = wmax,top=0.1)
+netVisual_aggregate(cellchats[[4]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~nucleus (Tumor)'), edge.weight.max = wmax,top=0.1)
 dev.off()
 
-#For other genes like CADM, EPHA and SEMA6, barplot shows big difference in nuclei tumor. When looking at network we see a different network topology in the nuclei tumor, which we would have missed with only cell sequencing. With snRNA-seq it is pretty obvious the normal/tumor difference. The CADM cell-cell interaction pathway is comprised of two self-interacting ligand-receptor genes (CADM1 and CADM3), where CADM1 is involved in the formation and maintenance of epithelial structure and both genes are known as tumor suppressor genes in various cancers, including lung  (https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0082894). . Same story for SEMA6 and EPHA, both known to involved in oncogenesis (ref, ref, ref) 
-CellChatDB.ccc$interaction[CellChatDB.ccc$interaction$pathway_name=='CADM',]
-pdf(file.path(params$datapath,'../results/Figures_July2023/cellchat_CADM.pdf'),width = 12,height = 15) 
+#For other genes like CADM, EPHA and SEMA6, barplot shows big difference in nuclei tumor. When looking at network we see a different network topology in the nuclei tumor, which we would have missed with only cell sequencing. With snRNA-seq it is pretty obvious the normal/tumor difference. The CADM cell-cell interaction pathway is comprised of two self-interacting ligand-receptor genes (CADM1 and CADM3), where CADM1 is involved in the formation and maintenance of epithelial structure and both genes are known as tumor suppressor genes in various cancers, including lung  (https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0082894). . Same story for SEMA6 and EPHA, both known to involved in oncogenesis (ref, ref, ref)
+gene = 'MHC-I'
+CellChatDB.ccc$interaction[CellChatDB.ccc$interaction$pathway_name==gene,]
+pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/cellchat/cellchat_',gene,'.pdf')),width = 6,height = 6) 
 par(mfrow = c(2,2), xpd=T)
-gene = 'CADM'
+
 wmax = getMaxWeight(cellchats, slot.name = c("netP"), attribute = gene)
-netVisual_aggregate(cellchats[[1]], signaling = gene, layout = "circle", edge.width.max = 20, signaling.name = paste0('CADM1~CADM5','~cell (Normal)'), edge.weight.max = wmax)
-netVisual_aggregate(cellchats[[2]], signaling = gene, layout = "circle", edge.width.max = 20, signaling.name = paste0('CADM1~CADM5','~nucleus (Normal)'), edge.weight.max = wmax)
-netVisual_aggregate(cellchats[[3]], signaling = gene, layout = "circle", edge.width.max = 20, signaling.name = paste0('CADM1~CADM5','~cell (Tumor)'), edge.weight.max = wmax)
-netVisual_aggregate(cellchats[[4]], signaling = gene, layout = "circle", edge.width.max = 20, signaling.name = paste0('CADM1~CADM5','~nucleus (Tumor)'), edge.weight.max = wmax)
+netVisual_aggregate(cellchats[[1]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~cell (Normal)'), edge.weight.max = wmax,top=0.1)
+netVisual_aggregate(cellchats[[2]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~nucleus (Normal)'), edge.weight.max = wmax,top=0.1)
+netVisual_aggregate(cellchats[[3]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~cell (Tumor)'), edge.weight.max = wmax,top=0.1)
+netVisual_aggregate(cellchats[[4]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~nucleus (Tumor)'), edge.weight.max = wmax,top=0.1)
 dev.off()
 
 #
-pdf(file.path(params$datapath,'../results/Figures_July2023/cellchat_ALL.pdf'),width = 12,height = 15) 
-par(mfrow = c(4,2), xpd=T)
-netVisual_circle(cellchats[[1]]@net$count, vertex.weight = as.numeric(table(cellchats[[1]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ cell (Normal)")
-netVisual_circle(cellchats[[2]]@net$count, vertex.weight = as.numeric(table(cellchats[[2]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ nucleus (Normal)")
-netVisual_circle(cellchats[[3]]@net$count, vertex.weight = as.numeric(table(cellchats[[3]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ cell (Tumor)")
-netVisual_circle(cellchats[[4]]@net$count, vertex.weight = as.numeric(table(cellchats[[4]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ nucleus (Tumor)")
-dev.off()
+#pdf(file.path(params$datapath,'../results/Figures_August2023/cellchat/cellchat_ALL.pdf'),width = 6,height = 6) 
+#par(mfrow = c(2,2), xpd=T)
+#netVisual_circle(cellchats[[1]]@net$count, vertex.weight = as.numeric(table(cellchats[[1]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ cell (Normal)")
+#netVisual_circle(cellchats[[2]]@net$count, vertex.weight = as.numeric(table(cellchats[[2]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ nucleus (Normal)")
+#netVisual_circle(cellchats[[3]]@net$count, vertex.weight = as.numeric(table(cellchats[[3]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ cell (Tumor)")
+#netVisual_circle(cellchats[[4]]@net$count, vertex.weight = as.numeric(table(cellchats[[4]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ nucleus (Tumor)")
+#dev.off()
 
 
 #comm probabilities
 p_com=list()
+names = c('cell_Normal','nucleus_Normal','cell_Tumor','nucleus_Tumor')
 for(i in 1:4){
   cellchats[[i]] = netAnalysis_computeCentrality(cellchats[[i]])
-  p_com[[i]]=netAnalysis_signalingRole_scatter(cellchats[[i]],weight.MinMax= c(0,350))
+  p_com[[i]]=netAnalysis_signalingRole_scatter(cellchats[[i]],weight.MinMax= c(0,700))+ggtitle(names[i])
+  if(i !=1) p_com[[i]] =  p_com[[i]]+theme(axis.title.x=element_blank(),axis.title.y=element_blank())
+  if(i !=4) p_com[[i]] =  p_com[[i]]+theme(legend.position = 'none')
 }
 
-pdf(file.path(params$datapath,'../results/Figures_July2023/cellchat1_com_probs.pdf'),width = 12,height = 6) 
-(p_com[[1]]+p_com[[2]])/(p_com[[3]]+p_com[[4]])
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/cellchat/cellchat1_com_probs.pdf'),width = 16,height = 4) 
+p_com[[1]]|p_com[[3]]|p_com[[2]]|p_com[[4]]
 dev.off()
 #
 
 
+#some statistics about the effect of method and type.
+out = list()
+method = c('Cell','Nucleus','Cell','Nucleus')
+type = c('Normal','Normal','Tumor','Tumor')
+
+for(i in 1:4){
+  data = data.frame(cellchats[[i]]@net$count,incoming = rownames(cellchats[[i]]@net$count))
+  data_pivot = data %>% pivot_longer(cols = !incoming, names_to = "outcoming", values_to = "count")
+  data_pivot$method = method[i]
+  data_pivot$type = type[i]
+  out[[i]] = data_pivot
+}
+
+out_final = rbind(out[[1]],out[[2]],out[[3]],out[[4]])
+
+anova(lm(count~method+type+incoming+outcoming,data = out_final))
+
+```
 
 
 
 
 
+pdf(file.path(params$datapath,'../results/Figures_August2023/cellchat/cellchat_tests.pdf'),width = 9,height = 12) 
+
+((((p_com[[1]]+p_com[[2]])/(p_com[[3]]+p_com[[4]])+ plot_layout(guide ='collect')) | stacked1) + plot_layout(width=c(8,1))) /
+  
+((plot_spacer() + netMHC) + plot_layout(width=c(8,1))) /
+((plot_spacer() + netPTPRM) + plot_layout(width=c(8,1))) 
+
+dev.off()
+
++ plot_layout(heights=c(3,3,3))
 
 
 
@@ -543,9 +622,4 @@ data_summarised = meta %>%
 print(data_summarised,n=22)
 
 ```
-
-
-
-
-
 

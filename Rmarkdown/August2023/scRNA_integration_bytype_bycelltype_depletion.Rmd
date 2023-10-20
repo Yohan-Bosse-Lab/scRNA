@@ -1,0 +1,412 @@
+---
+title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+
+```{r, requirements}
+library(readxl)
+library(Seurat) #scRNA analyses
+library(RColorBrewer)
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+library(tidyr)
+
+source('../R/azimuth_analysis.R')
+
+source('../R/infercnv.R')
+```
+
+# Loading data  
+```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
+seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+
+metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
+metadata_raw = read.csv(file.path(params$datapath,"adenoRAW.24samples_metadata.csv"),row.names = 1)
+metadata = relabeler(metadata)
+metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
+
+nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
+
+```
+
+
+
+
+# 'SingleCells','SingleNuclei','Depleted' specific plots NORMAL
+```{r integration,  include= F}
+if(file.exists(file.path(params$datapath,'combined_depletion_pertissue.rds')) == F){
+combined_permethod = list()
+for(i in 1:2){
+  if(i == 1) samples = c(1:length(filenames))[regexpr('CST-...._depletion_',filenames)>0]
+  if(i == 2) samples = c(1:length(filenames))[regexpr('CTT-...._depletion_',filenames)>0]
+ 
+  combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
+  
+  #features <- SelectIntegrationFeatures(object.list = seurat.objects[samples], nfeatures = 2000)
+  #seurat.objects.method <- PrepSCTIntegration(object.list = seurat.objects[samples], anchor.features = features)
+  #adeno.anchors <- FindIntegrationAnchors(object.list = seurat.objects.method, normalization.method = "SCT", anchor.features = features)
+  #combined_permethod[[i]] <- IntegrateData(anchorset = adeno.anchors, normalization.method = "SCT")
+  
+  #annotation
+  #azimuth_out = azimuth_annotation(combined_permethod[[i]],annotation_threshold = 0.8,v2=T)
+  #combined_permethod[[i]] = azimuth_out[[3]]
+  
+  
+  #infercnv
+  #infercnv_out = infercnv_wrapper(seurat_obj = combined_permethod[[i]],
+   #                         quantile = 0.5, 
+    #                        out.dir = file.path(params$datapath,'infercnv/24samples/',ifelse(i==1,'Normal_depletion','Normal_depletion')),
+     #                       level = 'predicted.ann_level_1',
+      #                      gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional'))
+  
+  #combined_permethod[[i]] = infercnv_out[[1]]
+  
+}
+saveRDS(combined_permethod,file.path(params$datapath,"combined_depletion_pertissue.rds"))
+} else combined_permethod = readRDS(file.path(params$datapath,'combined_depletion_pertissue.rds'))
+
+combined_permethod = relabeler(combined_permethod)
+```
+
+
+#cell types & UMAPs
+```{r celltypes plots}
+barplots_general = list()
+for(i in 1:2){
+  
+  data_summarised = combined_permethod[[i]]@meta.data %>% 
+      group_by(predicted.ann_level_1,patient) %>%
+      summarise(n = length(predicted.ann_level_1),.groups='keep')
+
+barplots_general[[i]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_1)) +
+    geom_bar(stat="identity")+scale_fill_manual('Cell Types (level 1)',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+theme_classic()+theme(axis.title = element_text(size = 8),legend.position = ifelse(i ==1,"none",'right')) +ylab('Total Number of cells') + xlab('') 
+}
+
+plot_UMAPS = list()
+###plots
+  plot_depletion_N=DimPlot(combined_permethod[[1]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = brewer.pal(n = 5, name = "Set1"),pt.size=0.1) + ggtitle('Immune depleted cell ~ Normal') + guides(shape='none') +theme(legend.position = "none",axis.title = element_text(size = 8),axis.text =element_text(size = 8),
+          axis.ticks.x = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank())
+  
+   plot_depletion_N$labels$colour = 'Cell types ~ level1'  
+   
+   
+  plot_depletion_T=DimPlot(combined_permethod[[2]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = brewer.pal(n = 5, name = "Set1"),pt.size=0.1) + ggtitle('Immune depleted cell ~ Tumor') + guides(shape='none') +theme(legend.position = "none",axis.title = element_text(size = 8),axis.text =element_text(size = 8),
+          axis.ticks.x = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank())
+  plot_depletion_T$labels$colour = 'Cell types ~ level1'  
+
+```
+
+#percentage mt as a function of method and tissue type
+```{r percentmt,message  = T,echo=T} 
+data_summarised = metadata_raw %>% group_by(method,type,samplename) %>% summarise(percent.mt = mean(percent.mt))
+p.mt_method_type = ggplot(metadata_raw, aes(x=method, y=percent.mt, fill=method)) +
+  geom_boxplot(position="dodge",outlier.shape = NA) +
+  ylab("Percentage of mitochondrial UMIs")  +
+  facet_wrap(~type)+ylim(0,40)+
+  theme_bw()+
+  theme(axis.text.x = element_blank(),legend.position = "right") 
+
+anova(lm(percent.mt~method*type+samplename, data = data_summarised))
+
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/FigS4.pdf'),width = 6,height = 4) 
+p.mt_method_type
+dev.off()
+```
+
+
+# STRESS ANALYSIS
+```{r loadRDS,message  = T,echo=T}  
+stress_references = read_xlsx(file.path(params$datapath,"512genes_OFlanagan_et_al2019.xlsx"))
+
+#prepare output df
+stress_genes = data.frame(gene = rownames(seurat.objects[[i]]@assays$RNA[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol,]))
+
+
+for(i in 1:24){
+  #stress_genesXcell is a matrix of stress genes X cells
+  stress_genesXcell  = seurat.objects[[i]]@assays$RNA[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol,]
+  temp2 = NULL
+
+  for(j in 1:nrow(stress_genesXcell)){
+    #
+    temp2 = c(temp2,length(stress_genesXcell[j,stress_genesXcell[j,]>0])/ncol(stress_genesXcell))
+    }
+  stress_genes = cbind(stress_genes,temp2)
+}
+#
+colnames(stress_genes)[-1] = filenames
+stress_genes = stress_genes %>%
+    pivot_longer(!gene, names_to = "filenames")
+
+#
+stress_genes$method  = '0'
+stress_genes$type = '0'
+stress_genes$patient = '0'
+
+stress_genes$type = ifelse(regexpr('CST',stress_genes$filenames)>0,'Normal','Tumor')
+stress_genes$method[regexpr('_SN_',stress_genes$filenames)>0] = 'Nucleus'
+stress_genes$method[regexpr('_all_',stress_genes$filenames)>0] = 'Cell'
+stress_genes$method[regexpr('_depletion_',stress_genes$filenames)>0] = 'Immune\ndepleted cell'
+
+stress_genes$patient[regexpr('^4',stress_genes$filenames)>0] = 'P4'
+stress_genes$patient[regexpr('^6',stress_genes$filenames)>0] = 'P6'
+stress_genes$patient[regexpr('^8',stress_genes$filenames)>0] = 'P8'
+stress_genes$patient[regexpr('^10',stress_genes$filenames)>0] = 'P10'
+
+stress_genes$sqrt = stress_genes$value**0.5
+
+#statistical tests
+anova(lm(value~method*type+patient, data = stress_genes))
+
+stress_genes %>% 
+  group_by(type,method) %>%
+  summarise(n = median(value,na.rm =T),.groups='keep') 
+
+stress_genes %>% 
+  group_by(type) %>%
+  summarise(n = median(value,na.rm =T),.groups='keep') 
+
+stress_genes %>% 
+  group_by(method) %>%
+  summarise(n = median(value,na.rm =T),.groups='keep') 
+
+
+stress_genes %>% 
+  group_by(patient) %>%
+  summarise(n = median(value,na.rm =T),.groups='keep') 
+
+###plot
+p_method = ggplot(stress_genes, aes(x=method, y=value, fill=method)) +
+  geom_boxplot(position="dodge",outlier.shape = NA) +
+  ylab("mean % of cells expressing a stress-related gene")  +
+  theme(axis.text.x = element_text(size=7))
+
+p_type = ggplot(stress_genes, aes(x=type, y=value, fill=type)) +
+  geom_boxplot(position="dodge",outlier.shape = NA) +
+  scale_fill_manual(values = c('yellow','darkblue')) +
+  ylab("")
+
+p_patient = ggplot(stress_genes, aes(x=patient, y=value, fill=patient)) +
+  geom_boxplot(position="dodge",outlier.shape = NA) +
+  ylab('')
+
+p_method_type = ggplot(stress_genes, aes(x=method, y=value, fill=method)) +
+  geom_boxplot(position="dodge",outlier.shape = NA) +
+  ylab("fraction of cells expressing\na stress-related gene")  +
+  facet_wrap(~type)+
+  theme_bw() +
+  theme(axis.text.x = element_blank(),legend.position = "right") 
+```  
+
+# Cell types annotations summaries
+```{r celltypes,echo = F} 
+data_summarised = metadata %>% 
+    group_by(predicted.ann_level_1,method,type,patient,unique) %>%
+    summarise(n = length(predicted.ann_level_1),.groups='keep')
+
+data_summarised$fraction = 0
+
+for(i in seq_along(nb_cells_per_sample[,1])){
+  data_summarised$fraction[data_summarised$unique == nb_cells_per_sample$Var1[i]] =  data_summarised$n[data_summarised$unique == nb_cells_per_sample$Var1[i]] / nb_cells_per_sample$Freq[i]*100
+}
+
+data_summarised$methodXtype = paste(data_summarised$type,data_summarised$method,sep = ' --- ')
+
+data_summarised$patient = factor(data_summarised$patient,level = c(4,6,8,10))
+
+summary_bars = ggplot(data=data_summarised, aes(x=patient, y=fraction, fill=predicted.ann_level_1)) +
+  geom_bar(stat="identity") + facet_wrap(~interaction(method,type,sep = " ~ "),nrow = 2, ncol = 3, scales = "free_y") + 
+  scale_fill_manual('Cell Types (level1)',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+xlab('Patients') + ylab('Percentage of cells')
+```
+
+# CNV feature plot
+```{r cnv,echo = F} 
+combined_permethod[[2]]@meta.data$cnv_score[combined_permethod[[2]]@meta.data$cnv_score>0.015] = 0.015 
+cnv_depletion_N= FeaturePlot(combined_permethod[[2]],order = T,reduction = 'proj.umap',features = 'cnv_score',pt.size = 0.2,cols = c('#D3D3D3ff','#ff0000ff')) + ggtitle('Immune depleted cell (Tumor) ~ CNV score') + guides(shape='none') + theme(legend.position = "right",axis.title = element_text(size = 8),axis.text =element_text(size = 8) )
+
+cnv_depletion_N$labels$colour = 'score'  
+```
+
+
+```{r lambrechts barplot}
+sc_sn_plots = list()
+for(i in 1:2){
+metadata_simplified = combined_permethod[[i]]@meta.data
+metadata_simplified$patient[metadata_simplified$patient == 4] = 1
+metadata_simplified$patient[metadata_simplified$patient == 6] = 2
+metadata_simplified$patient[metadata_simplified$patient == 8] = 3
+metadata_simplified$patient[metadata_simplified$patient == 10] = 4
+#none == unknown
+metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='None'] = 'Unclassified'
+
+#filter rare celltypes
+celltypes = as.matrix(table(metadata_simplified$predicted.ann_level_3,metadata_simplified$predicted.ann_level_1))
+
+
+flush = 0
+for(c in 1:ncol(celltypes))
+{
+  rare = rownames(celltypes)[celltypes[,c]<20]
+  #filter 
+  if(c != ncol(celltypes)) {temp = c(1:nrow(metadata_simplified))[(metadata_simplified$predicted.ann_level_3 %in% rare) & metadata_simplified$predicted.ann_level_1 == colnames(celltypes)[c]]}
+  if(c == ncol(celltypes)) {temp = c(1:nrow(metadata_simplified))[(metadata_simplified$predicted.ann_level_3 == 'Unclassified') & metadata_simplified$predicted.ann_level_1 == colnames(celltypes)[c]]}
+  flush = c(temp,flush)
+}
+
+metadata_simplified = metadata_simplified[-flush,]
+
+
+#shorten names
+metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymph. EC diff.'
+metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Lymphatic EC mature'] = 'Lymph. EC matu.'
+metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Multiciliated lineage'] = 'Multicil. lineage' 
+metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Innate lymphoid cell NK'] = 'lymphoid cell NK'
+metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='SM activated stress response'] = 'stress response'
+
+
+#summarise
+data_summarised = metadata_simplified %>% 
+  group_by(predicted.ann_level_3,patient,predicted.ann_level_1) %>%
+  summarise(n = length(predicted.ann_level_3),sum = sum(nFeature_RNA),cnv_sum = sum(cnv_score),.groups='keep')
+
+
+data_summarised$n_fraction = 0
+data_summarised$nFeature_RNA_mean = 0
+data_summarised$cnv_mean = 0
+unique_patients = unique(data_summarised$patient)
+
+#keep best labels
+for(u in unique(data_summarised$predicted.ann_level_3)){  
+  temp = data_summarised[data_summarised$predicted.ann_level_3==u,] 
+ 
+  for(p in seq_along(unique_patients)){
+    #this is necessary for the special cases of unknowns which happen in different cell types...
+    for(lev1 in c('Immune','Epithelial','Endothelial','Stroma','Unclassified')){ 
+      temp$n_fraction[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1] = sum(temp$n[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1]) / sum(temp$n[temp$predicted.ann_level_1==lev1])
+
+      temp$nFeature_RNA_mean[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1] = sum(temp$sum[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1])/sum(temp$n[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1])
+ 
+      temp$cnv_mean[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1] = sum(temp$cnv_sum[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1])/sum(temp$n[temp$patient==unique_patients[p] & temp$predicted.ann_level_1 == lev1])
+    }
+  }
+  data_summarised[data_summarised$predicted.ann_level_3 ==u,] = temp
+}
+
+data_summarised$predicted.ann_level_1 = factor(data_summarised$predicted.ann_level_1,level = c('Immune','Epithelial','Endothelial','Stroma','Unclassified'))
+
+data_summarised$patient = factor(data_summarised$patient,level = c(1,2,3,4))
+
+metadata_simplified$predicted.ann_level_1 = factor(metadata_simplified$predicted.ann_level_1,level = c('Immune','Epithelial','Endothelial','Stroma','Unclassified'))
+
+
+
+#plots
+fraction_per_patient = ggplot(data_summarised, aes(n_fraction,predicted.ann_level_3,fill = patient)) + 
+  geom_col(position = position_fill(reverse = TRUE)) +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+  xlab('Fraction of cells') +
+  scale_fill_discrete(type= c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1]) +
+  theme_bw() + theme(legend.position = ifelse(i==1,'right','none'),axis.title.x= list(element_blank(),element_text())[[i]])
+
+
+number_of_cells = ggplot(data_summarised, aes(n,predicted.ann_level_3,fill = patient)) +
+    geom_col(position = position_stack(reverse = TRUE))  +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+    xlim(c(0,8500)) + 
+  ylab(paste0('Cell types',ifelse(i==1,' (Normal)',' (Tumor)')))  +
+  xlab('Number of cells') +
+  scale_fill_discrete(type= c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1]) +
+  theme_bw() + theme(legend.position = ifelse(i==1,'none','right'),strip.text = element_text(
+    size = 8),axis.text.y = element_text(size = 7))
+
+#data_summarised_UMI = data_summarised[data_summarised$patient=='P4',]
+number_of_UMI = ggplot(metadata_simplified, aes(nCount_RNA,predicted.ann_level_3)) + geom_boxplot(fill = "deeppink") + 
+  facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') + 
+  scale_x_continuous(trans = 'log10', breaks = c(500,1500,5000,15000,50000), label = c(500,1500,5000,15000,50000)) +
+  xlab('Number of UMIs per cell\n(log scale)') +
+  theme_bw() + 
+  theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
+
+
+#CNV 
+
+number_of_genes = ggplot(metadata_simplified, aes(nFeature_RNA,predicted.ann_level_3)) + geom_boxplot(fill = "deeppink") +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+  ylab('clusters') +
+  xlab('Number of genes per cell') +
+   theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),
+  strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
+
+
+
+
+cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + geom_boxplot(fill = "aquamarine") + scale_x_continuous(trans= 'log10',breaks = c(0.0001,0.001,0.01), label = c(0.0001,0.001,0.01),limits = c(0.00004,0.02)) +
+    facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
+    ylab('clusters') +
+    xlab('CNV score (log scale)') +
+    theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),
+                       strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
+
+
+
+ if(i ==1) sc_sn_plots[[i]] = number_of_cells
+ if(i ==2) sc_sn_plots[[i]] = number_of_cells
+  
+}
+
+#pdf(file.path(params$datapath,'../results/Figures_august2023/Suppl_Fig9_barplots_lambrechtsDepletion.pdf'),width = 14,height = 12) 
+(sc_sn_plots[[1]]/sc_sn_plots[[2]] ) + plot_annotation(tag_levels = list(c('A','B','C','D','E','F','G')))
+#dev.off()
+```
+
+
+
+```{r save plots, message= T}
+#empty_placeholder = ggplot() + theme_void()
+###plots
+  
+  pdf(file.path(params$datapath,'../results/Figures_Oct2023/Fig9_UMAPs_depletion24.pdf'),width = 12,height = 9) 
+ ((plot_depletion_N + barplots_general[[1]] + plot_depletion_T + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) / 
+ 
+  (sc_sn_plots[[1]]|sc_sn_plots[[2]] | p_method_type) + plot_layout(widths = c(10,10,2))) + plot_annotation(tag_levels = list(c('A','','B','','C','D','E')))
+          #                                                                                                                                     )
+  dev.off()
+
+#+ plot_annotation(tag_levels = list(c('A','','B','','C','D',''))e
+```
+
+
+
+
+
+# session info  
+```{r session, message= T}
+###session
+sessionInfo()
+```
+
+
