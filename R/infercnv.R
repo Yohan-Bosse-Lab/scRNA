@@ -25,12 +25,11 @@ infercnv_wrapper = function(seurat_obj = combined_permethod[[i]],
   infercnv_object_example <- infercnv::run(infercnv_object_example,
                                          cutoff=0.1,
                                          out_dir=out.dir,
-                                         cluster_by_groups=TRUE,
+                                         cluster_by_groups=T,
                                          denoise=TRUE,
                                          HMM=F,
                                          num_threads=12,
                                          no_plot=TRUE)
-
 
 
   ###cnv_Score (mean per gene)
@@ -43,7 +42,7 @@ infercnv_wrapper = function(seurat_obj = combined_permethod[[i]],
     group_by(annotations) %>%
     summarise(n = mean(cnv_score),sd = sd(cnv_score),.groups='keep')
 
-  print(out_stats)
+ # print(out_stats)
 
   seurat_obj@meta.data$cnv_score = annotations_file$cnv_score
 
@@ -51,4 +50,12 @@ infercnv_wrapper = function(seurat_obj = combined_permethod[[i]],
   
   return(list(seurat_obj,out_stats))
 }
+
+
+
+
+
+
+
+
 

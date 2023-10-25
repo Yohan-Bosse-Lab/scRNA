@@ -74,24 +74,31 @@ combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted
 combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3 == 'None'] = 'Unclassified'
 combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3 == 'unknown'] = 'Unclassified'
 
+#
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3_simplified == 'Unclassified' & combined@meta.data$predicted.ann_level_1 == 'Epithelial'] = 'Epithelial ~ Unclassified'
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3_simplified == 'Unclassified' & combined@meta.data$predicted.ann_level_1 == 'Endothelial'] = 'Endothelial ~ Unclassified'
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3_simplified == 'Unclassified' & combined@meta.data$predicted.ann_level_1 == 'Immune'] = 'Immune ~ Unclassified'
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3_simplified == 'Unclassified' & combined@meta.data$predicted.ann_level_1 == 'Stroma'] = 'Stroma ~ Unclassified'
+
+#
 combined@meta.data$patient[combined@meta.data$patient == 4] = 1
 combined@meta.data$patient[combined@meta.data$patient == 6] = 2
 combined@meta.data$patient[combined@meta.data$patient == 8] = 3
 combined@meta.data$patient[combined@meta.data$patient == 10] = 4
 
 #
-
-
-
+combined@meta.data$method[combined@meta.data$method == 'immune depleted cells'] = 'Immune-depleted\ncell'
+combined@meta.data$predicted.ann_level_3_simplified[combined@meta.data$predicted.ann_level_3_simplified=='Lymphatic EC differentiating'] = 'Lymphatic EC diff.'
+combined@meta.data$predicted.ann_level_3_simplified = factor(combined@meta.data$predicted.ann_level_3_simplified, levels = c("AT1","AT2","B cell lineage","Basal","Dendritic cells","EC arterial","EC capillary","EC venous","Fibroblasts","Innate lymphoid cell NK","Lymphatic EC diff.","Lymphatic EC mature","Macrophages","Mast cells","Monocytes","Multiciliated lineage","Myofibroblasts","others","Rare","Secretory","T cell lineage","Endothelial ~ Unclassified","Epithelial ~ Unclassified","Immune ~ Unclassified","Stroma ~ Unclassified","Unclassified"))
 ```
 
 
 # Large UMAP of all cells.
 ```{r plots, message= T}
-col = c(brewer.pal(n = 8, name = "Set1"),brewer.pal(n = 8, name = "Set3"),'darkblue','darkred','black','goldenrod4','turquoise4','gray')
+col = c(brewer.pal(n = 8, name = "Set1")[6:8],brewer.pal(n = 7, name = "Set3"),'black','darkblue','darkred',brewer.pal(8,name = 'Accent')[8:1],brewer.pal(n = 8, name = "Set1")[1:5])
 
 umap_theme = function(){
-  theme(legend.position = "right",axis.title = element_text(size = 12),axis.text = element_text(size = 12),
+  theme(legend.position = "right",axis.title = element_text(size = 16),axis.text = element_text(size = 16),
           axis.ticks.x = element_blank(),
           axis.ticks.y = element_blank(),
           axis.text.x = element_blank(),
@@ -99,34 +106,33 @@ umap_theme = function(){
 }
 
 dimplots_allcells = DimPlot(combined, reduction = "proj.umap", group.by = "predicted.ann_level_3_simplified",cols = col,pt.size=0.01,raster= F,order = F, label = T, label.size = 8, repel = T) + 
-    ggtitle('All cells/nuclei ~ level 3 annotation') +
-    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) + 
+    ggtitle('All cells/nuclei ~ Annotation (level 3)') +
+    guides(shape='none',color=guide_legend(override.aes = list(size=10), ncol=1)) + 
     labs(color = "Cell Types (level3)") +
-    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+    umap_theme() + theme(plot.title = element_text(size = 42),legend.text = element_text(size=16),legend.title = element_text(size=28), legend.position = 'right')
 
-dimplots_type = DimPlot(combined, reduction = "proj.umap", group.by = "type",pt.size=0.01,raster= F,order = F, label.size = 8) + 
+dimplots_type = DimPlot(combined, reduction = "proj.umap", group.by = "type",pt.size=0.01,raster= F,order = F, label.size = 4) + 
     ggtitle('All cells/nuclei ~ Tissue type') +
-    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) +
+    guides(shape='none',color=guide_legend(override.aes = list(size=10), ncol=1)) +
     labs(color = "Tissue type") +
-    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+    umap_theme() + theme(plot.title = element_text(size = 42),legend.text = element_text(size=20),legend.title = element_text(size=28), legend.position = 'right')
 
 dimplots_method = DimPlot(combined, reduction = "proj.umap", group.by = "method",pt.size=0.01,raster= F,order = F, label.size = 8) + 
     ggtitle('All cells/nuclei ~ Experimental method') +
-    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) +
+    guides(shape='none',color=guide_legend(override.aes = list(size=10), ncol=1)) +
     labs(color = "Method") +
-    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+    umap_theme() + theme(plot.title = element_text(size = 42),legend.text = element_text(size=20),legend.title = element_text(size=28), legend.position = 'right')
 
-dimplots_patient = DimPlot(combined, reduction = "proj.umap", group.by = "patient",cols = c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1],pt.size=0.01,raster= F,order = F,label.size = 8) + 
+dimplots_patient = DimPlot(combined, reduction = "proj.umap", group.by = "patient",cols = c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1],pt.size=0.01,raster= F,order = F) + 
     ggtitle('All cells/nuclei ~ Patients') +
-    guides(shape='none',color=guide_legend(override.aes = list(size=6), ncol=1)) +
+    guides(shape='none',color=guide_legend(override.aes = list(size=10), ncol=1)) +
     labs(color = "Patients") +
-    umap_theme() + theme(plot.title = element_text(size = 28),legend.text = element_text(size=12),legend.title = element_text(size=20))
+    umap_theme() + theme(plot.title = element_text(size = 42),legend.text = element_text(size=20),legend.title = element_text(size=28), legend.position = 'right')
 
 
-png(file.path(params$datapath,'../results/Figures_Oct2023/UMAP_allcells.png'),width = 2000,height = 1500)
-(dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) + plot_annotation(tag_levels = 'A')
+png(file.path(params$datapath,'../results/Figures_Oct2023/UMAP_allcells.png'),width = 3000,height = 2250)
+(dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 34))
 dev.off()
-
 ```
 
 # feature plots
@@ -158,8 +164,6 @@ for(i in 1:2)
   fplots[[(i*5) - 2]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Epithelial_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Epithelial markers')+ umap_theme()
   fplots[[(i*5) - 1]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Endothelial_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Endothelial markers')+ umap_theme()
   fplots[[(i*5)]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Stroma_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Stroma markers')+ umap_theme()
-  
-  
 }
 
 

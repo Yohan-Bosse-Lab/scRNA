@@ -184,7 +184,7 @@ for(i in 1:6)
   predicted = query@meta.data[,colnames(query@meta.data) %in% predicted_levels[i]]
   scores = query@meta.data[,colnames(query@meta.data) %in% scores_levels[i]]
 
-  predicted[scores<0.5] = 'unknown'
+  predicted[scores<annotation_threshold] = 'unknown'
   
   query@meta.data[,colnames(query@meta.data) %in% predicted_levels[i]] = predicted
   
@@ -211,8 +211,6 @@ return(list(input_data,qps,query))
 
 # DimPlot of the query, colored by predicted cell type
 #DimPlot(object = query, reduction = "proj.umap", group.by = predicted.id[2], label = TRUE) + NoLegend()
-
-
 
 
 
@@ -272,103 +270,45 @@ ClusterPreservationScore <- function(query, ds.amount) {
 
 
 
-if(1==2){
-#POC
+###
+relabeler = function(seurat.data=data){
 
-#setup
-packageVersion(pkg = "Seurat")
-#[1] ‘4.3.0’
-packageVersion(pkg = "Azimuth")
-#[1] ‘0.4.6’
-
-SeuratData::InstallData('pbmc3k')
-pbmc3k = SeuratData::LoadData('pbmc3k')
-SeuratDisk::SaveH5Seurat(pbmc3k,'pbmc3k.h5Seurat')
-
-#run Azimuth locally 
-pbmc3k = RunAzimuth(pbmc3k,reference = 'pbmcref')
-
-#run through Shiny App
-azimuth_pred_App = predictions <- read.delim('azimuth_pred.tsv', row.names = 1)
-
-#make sure we have the same cells
-all.equal(rownames(azimuth_pred_App),rownames(pbmc3k@meta.data))
-
-#plot
-plot(pbmc3k@meta.data$mapping.score,azimuth_pred_App$mapping.score)
-
+  
+  if(class(seurat.data) == 'data.frame') {
+    seurat.data$predicted.ann_level_1[seurat.data$predicted.ann_level_1=='unknown'] = 'Unclassified'
+    seurat.data$predicted.ann_level_2[seurat.data$predicted.ann_level_2=='unknown'] = 'Unclassified'
+    seurat.data$predicted.ann_level_3[seurat.data$predicted.ann_level_3=='unknown'] = 'Unclassified'
+    seurat.data$predicted.ann_level_4[seurat.data$predicted.ann_level_4=='unknown'] = 'Unclassified'
+    seurat.data$predicted.ann_level_5[seurat.data$predicted.ann_level_5=='unknown'] = 'Unclassified'
+    seurat.data$predicted.ann_finest_level[seurat.data$predicted.ann_finest_level=='unknown'] = 'Unclassified'
+  }
+  
+  if(class(seurat.data) == 'list'){
+    for(i in 1:length(seurat.data)){
+    
+      if(length(seurat.data[[i]])>1){
+        for(j in 1:length(seurat.data[[i]])){
+          seurat.data[[i]][[j]]@meta.data$predicted.ann_level_1[seurat.data[[i]][[j]]@meta.data$predicted.ann_level_1=='unknown'] = 'Unclassified'
+          seurat.data[[i]][[j]]@meta.data$predicted.ann_level_2[seurat.data[[i]][[j]]@meta.data$predicted.ann_level_2=='unknown'] = 'Unclassified'
+          seurat.data[[i]][[j]]@meta.data$predicted.ann_level_3[seurat.data[[i]][[j]]@meta.data$predicted.ann_level_3=='unknown'] = 'Unclassified'
+          seurat.data[[i]][[j]]@meta.data$predicted.ann_level_4[seurat.data[[i]][[j]]@meta.data$predicted.ann_level_4=='unknown'] = 'Unclassified'
+          seurat.data[[i]][[j]]@meta.data$predicted.ann_level_5[seurat.data[[i]][[j]]@meta.data$predicted.ann_level_5=='unknown'] = 'Unclassified'
+          seurat.data[[i]][[j]]@meta.data$predicted.ann_finest_level[seurat.data[[i]][[j]]@meta.data$predicted.ann_finest_level=='unknown'] = 'Unclassified'
+        }
+      }
+    
+      if(length(seurat.data[[i]])==1){
+        seurat.data[[i]]@meta.data$predicted.ann_level_1[seurat.data[[i]]@meta.data$predicted.ann_level_1=='unknown'] = 'Unclassified'
+        seurat.data[[i]]@meta.data$predicted.ann_level_2[seurat.data[[i]]@meta.data$predicted.ann_level_2=='unknown'] = 'Unclassified'
+        seurat.data[[i]]@meta.data$predicted.ann_level_3[seurat.data[[i]]@meta.data$predicted.ann_level_3=='unknown'] = 'Unclassified'
+        seurat.data[[i]]@meta.data$predicted.ann_level_4[seurat.data[[i]]@meta.data$predicted.ann_level_4=='unknown'] = 'Unclassified'
+        seurat.data[[i]]@meta.data$predicted.ann_level_5[seurat.data[[i]]@meta.data$predicted.ann_level_5=='unknown'] = 'Unclassified'
+        seurat.data[[i]]@meta.data$predicted.ann_finest_level[seurat.data[[i]]@meta.data$predicted.ann_finest_level=='unknown'] = 'Unclassified'
+      }
+    }
+  }
+  return(seurat.data) 
 }
 
 
 
-if(1==2){
-#taken from the https://github.com/satijalab/azimuth-references/tree/master/human_lung_v2
-#prep reference
-library(Seurat)
-library(SeuratObject)
-library(Azimuth)
-library(Matrix)
-library(arrow)
-
-setwd('scRNA/scRNA/data/HLCA/lung_2.0.1/')
-
-
-#script = "scripts/build_reference.R",
-counts.path  = "data/counts.rds"
-annotations.path = "data/annotations.parquet"
-dr.path = "data/scanvi.parquet"
-ref.path = "reference/ref.Rds"
-annoy.path  = "reference/idx.annoy"
-full.obj.path  ="full_reference.Rds"
-
-mtx <- readRDS(counts.path)
-obj <- CreateSeuratObject(counts = mtx)
-
-# load annotations
-annotations <- read_parquet(annotations.path)
-annotations <- as.data.frame(annotations)[,c("ann_level_1", "ann_level_2", "ann_level_3", "ann_level_4", "ann_level_5", "ann_finest_level")]
-rownames(annotations) <- Cells(obj)
-obj <- AddMetaData(obj, metadata = annotations)
-print(head(obj))
-
-# load in the scANVI latent space which contains 30 dimensions
-latent.space <- as.matrix(read_parquet(dr.path))
-rownames(latent.space) <- Cells(obj)
-scanvi.dr <- CreateDimReducObject(embeddings = as.matrix(latent.space), key = "SCANVI")
-obj[["scanvi"]] <- scanvi.dr
-
-# find neighbors based on scANVI latent space
-obj <- FindNeighbors(obj, reduction = "scanvi")
-
-# Run SCTransform on the raw counts
-
-###DOES NOT WORK
-#HERE HERE HERE 
-#NOT ENOUGH MEMORE V2 BREKS ...
-obj <- SCTransform(obj,method = glmGamPoi_offset, n_cells=2000,exclude_poisson = TRUE, vst.flavor = "v2")
-
-# run sPCA
-obj <- RunSPCA(object = obj, assay = "SCT", graph = "RNA_snn")
-
-# Force RunUMAP to run with n.epochs to prevent RunUMAP from running for 0 epochs
-# Related: https://scanpy.discourse.group/t/umap-incorrectly-installed/663
-obj <- RunUMAP(obj, dims = 1:30, reduction = "scanvi", n.epochs = 200, return.model = TRUE)
-
-# save the full size object to perform marker identification
-saveRDS(obj, file = full.obj.path)
-
-annotations <- c("ann_level_1", "ann_level_2", "ann_level_3", "ann_level_4", "ann_level_5", "ann_finest_level")
-ref <- AzimuthReference(obj,
-                        refUMAP = 'umap',
-                        refDR = 'spca',
-                        dims = 1:50, # use 50 dimensions from the sPCA dimensional reduction
-                        plotref = 'umap',
-                        reference.version = '2.0.1',
-                        metadata = annotations)
-
-saveRDS(object = ref, file = ref.path, compress = F)
-SaveAnnoyIndex(object = ref[["refdr.annoy.neighbors"]],
-               file = annoy.path)
-
-
-}
