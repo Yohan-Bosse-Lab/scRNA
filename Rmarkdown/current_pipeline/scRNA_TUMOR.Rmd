@@ -1,5 +1,5 @@
 ---
-title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -50,23 +50,6 @@ for(i in 1:2){
  
   combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
   
-  #features <- SelectIntegrationFeatures(object.list = seurat.objects[samples], nfeatures = 2000)
-  #seurat.objects.method <- PrepSCTIntegration(object.list = seurat.objects[samples], anchor.features = features)
-  #adeno.anchors <- FindIntegrationAnchors(object.list = seurat.objects.method, normalization.method = "SCT", anchor.features = features)
-  #combined_permethod[[i]] <- IntegrateData(anchorset = adeno.anchors, normalization.method = "SCT")
-  
-  #annotation
-  #azimuth_out = azimuth_annotation(combined_permethod[[i]],annotation_threshold = 0.8,v2=T)
-  #combined_permethod[[i]] = azimuth_out[[3]]
-  
-  
-  #infercnv
-  #infercnv_out = infercnv_wrapper(seurat_obj = combined_permethod[[i]],
-  #                          quantile = 0.5, 
-  #                          out.dir = file.path(params$datapath,'infercnv/24samples/',ifelse(i==1,'Tumor_cell','Tumor_nucleus')),
-  #                          level = 'predicted.ann_level_1',
-  #                          gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional'))
-  
   #combined_permethod[[i]] = infercnv_out[[1]]
   print(paste0('Done ',i,' --- Time is: ', Sys.time()))
 }
@@ -106,10 +89,6 @@ for(k in 1:2){
           axis.text.x = element_blank(),
           axis.text.y = element_blank())
 }
-
-
-
-   
 ```
 
 #cell types general plots 
@@ -124,9 +103,6 @@ for(i in 1:2){
 barplots_general[[i]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_1)) +
     geom_bar(stat="identity")+scale_fill_manual('Cell Types (level1)',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+theme_classic()+theme(axis.title = element_text(size = 8),legend.position = ifelse(i ==1,"none",'right')) +ylab('Total Number of cells') + xlab('') 
 }
-
-
-
 ```
 
 ```{r stats}
@@ -141,8 +117,10 @@ dev.off()
 ```
 
 # plots
+* Similar to the figure of Lambrechts et al. 2018
 ```{r lambrechts barplot}
 sc_sn_plots = list()
+
 #combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
 for(i in 1:2){
 metadata_simplified = combined_permethod[[i]]@meta.data
@@ -259,9 +237,6 @@ number_of_genes = ggplot(metadata_simplified, aes(nFeature_RNA,predicted.ann_lev
    theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),
   strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
 
-
-
-
   sc_sn_plots[[i]] = fraction_per_patient|number_of_cells|number_of_genes|cnvMean
 }
 
@@ -272,8 +247,12 @@ dev.off()
 
 
 
-
-```{r done}
-print('done')
+# session info  
+```{r session, message= T}
+###session
+sessionInfo()
 ```
+
+
+
 

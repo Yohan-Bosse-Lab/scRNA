@@ -1,5 +1,5 @@
 ---
-title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -27,7 +27,6 @@ library(DT) #data viz
 library(plotly)
 
 source('../R/azimuth_analysis.R')
-
 source('../R/infercnv.R')
 ```
 
@@ -51,25 +50,7 @@ for(i in 1:2){
   if(i == 2) samples = c(1:length(filenames))[regexpr('CST-...._SN_',filenames)>0]
  
   combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
-  
-  #features <- SelectIntegrationFeatures(object.list = seurat.objects[samples], nfeatures = 2000)
-  #seurat.objects.method <- PrepSCTIntegration(object.list = seurat.objects[samples], anchor.features = features)
-  #adeno.anchors <- FindIntegrationAnchors(object.list = seurat.objects.method, normalization.method = "SCT", anchor.features = features)
-  #combined_permethod[[i]] <- IntegrateData(anchorset = adeno.anchors, normalization.method = "SCT")
-  
-  #annotation
-  #azimuth_out  = azimuth_annotation(combined_permethod[[i]],annotation_threshold = 0.5,v2=T)
-  #combined_permethod[[i]] = azimuth_out[[3]]
-  
-  
-  #infercnv
-  #infercnv_out = infercnv_wrapper(seurat_obj = combined_permethod[[i]],
-  #                          quantile = 0.5, 
-  #                          out.dir = file.path(params$datapath,'infercnv/24samples/',ifelse(i==1,'Normal_cell','Normal_nucleus')),
-  #                          level = 'predicted.ann_level_1',
-  #                          gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional'))
-  
-  #combined_permethod[[i]] = infercnv_out[[1]]
+ 
   print(paste0('Done ',i,' --- Time is: ', Sys.time()))
 }
 saveRDS(combined_permethod,file.path(params$datapath,"combined_permethod_pertypeN24.rds"))
@@ -117,7 +98,7 @@ combined_permethod_percelltype = relabeler(combined_permethod_percelltype)
 
 ```
 
-
+# Fisher Exact Tests
 ```{r FETs}
 #Fisher Exact Test unknowns epithelials  (level 3)
 cell_imm =  table(combined_permethod_percelltype[[2]][[1]]@meta.data$predicted.ann_level_3)
@@ -145,10 +126,6 @@ nuc_epi = table(nuc_epi$predicted.ann_level_3)
 
 
 fisher.test(rbind(c(cell_epi[names(cell_epi) == 'Unclassified'],sum(cell_epi[names(cell_epi) != 'Unclassified'])),c(nuc_epi[names(nuc_epi) == 'Unclassified'],sum(nuc_epi[names(nuc_epi) != 'Unclassified']))))
-
-
-
-
 ```
 
 
@@ -271,8 +248,10 @@ for(i in 1:2){
 ```
 
 # plots
+* Similar to the plots of Lambrechts 2018.
 ```{r lambrechts barplot}
 sc_sn_plots = list()
+
 #combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
 for(i in 1:2){
 metadata_simplified = combined_permethod[[i]]@meta.data
@@ -386,9 +365,6 @@ cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + ge
     xlab('CNV score (log scale)') +
     theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),
                        strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
-
-
-
   sc_sn_plots[[i]] = fraction_per_patient|number_of_cells|number_of_genes
 }
 

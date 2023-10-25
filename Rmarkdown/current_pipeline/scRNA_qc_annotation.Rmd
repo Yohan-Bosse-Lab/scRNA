@@ -1,5 +1,5 @@
 ---
-title: "Single Cells - 20 patients"
+title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -32,7 +32,6 @@ library(DT) #data viz
 library(plotly)
 source('../R/doubletfinder.R')
 source('../R/azimuth_analysis.R')
-
 source('../R/infercnv.R')
 
 ```
@@ -48,7 +47,7 @@ filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix')
 filenames
 ```
 
-
+#prepare the seurat object and metadata.
 ```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F}  
 #create seurat objects
 seurat.objects = list()
@@ -153,7 +152,7 @@ saveRDS(seurat.objects, file = file.path(params$datapath,"adeno.24samples_27_07_
 ```
 
 
-# SAVE DATA  
+# ADD the cnv data and save it again. 
 ```{r annotation_cnv}
 seurat.objects = readRDS(file.path(params$datapath,"adeno.24samples_27_07_23.rds"))
 
@@ -191,16 +190,9 @@ write.csv(metadata,file.path(params$datapath,"adeno.24samples_metadata.csv"))
 ```
 
 
-
-
-
-
-
-
-
 # DONE DATA  
-```{r done,message  = T, fig.width = 11, fig.height=8,echo=T}  
-print('toto')
+```{r done,message  = T}  
+print('Done')
 
 ```
 

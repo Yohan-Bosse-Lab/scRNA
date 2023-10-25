@@ -1,5 +1,5 @@
 ---
-title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -59,26 +59,6 @@ for(i in 1:2){
   if(i == 2) samples = c(1:length(filenames))[regexpr('CTT-...._depletion_',filenames)>0]
  
   combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
-  
-  #features <- SelectIntegrationFeatures(object.list = seurat.objects[samples], nfeatures = 2000)
-  #seurat.objects.method <- PrepSCTIntegration(object.list = seurat.objects[samples], anchor.features = features)
-  #adeno.anchors <- FindIntegrationAnchors(object.list = seurat.objects.method, normalization.method = "SCT", anchor.features = features)
-  #combined_permethod[[i]] <- IntegrateData(anchorset = adeno.anchors, normalization.method = "SCT")
-  
-  #annotation
-  #azimuth_out = azimuth_annotation(combined_permethod[[i]],annotation_threshold = 0.8,v2=T)
-  #combined_permethod[[i]] = azimuth_out[[3]]
-  
-  
-  #infercnv
-  #infercnv_out = infercnv_wrapper(seurat_obj = combined_permethod[[i]],
-   #                         quantile = 0.5, 
-    #                        out.dir = file.path(params$datapath,'infercnv/24samples/',ifelse(i==1,'Normal_depletion','Normal_depletion')),
-     #                       level = 'predicted.ann_level_1',
-      #                      gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional'))
-  
-  #combined_permethod[[i]] = infercnv_out[[1]]
-  
 }
 saveRDS(combined_permethod,file.path(params$datapath,"combined_depletion_pertissue.rds"))
 } else combined_permethod = readRDS(file.path(params$datapath,'combined_depletion_pertissue.rds'))

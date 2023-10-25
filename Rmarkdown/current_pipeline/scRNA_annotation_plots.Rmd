@@ -1,5 +1,5 @@
 ---
-title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -127,58 +127,6 @@ print(anova(lm(value~method*type*levels,mean_scores_temp)))
 ```
 
 
-
-```{r summary T/N finest, message= T}
-#how many cell types
-dim(metadata %>% 
-            group_by(predicted.ann_level_3) %>%
-            summarise(n = length(predicted.ann_level_3),.groups='keep') %>% 
-            filter(n > 100))
-
-#summarise your data
-data_summarised = metadata %>% 
-  group_by(predicted.ann_level_1,predicted.ann_level_3,method,type) %>%
-  summarise(n = length(predicted.ann_level_3),.groups='keep') %>% 
-  filter(n > 100)
-
-
-data_summarised$method[data_summarised$method == 'immune depleted cells'] = 'Immune\ndepleted\ncells'
-
-data_summarised$method = factor(data_summarised$method, levels = c('Cell','Immune\ndepleted\ncells','Nucleus'))
-
-# Stacked barplot with multiple groups
-high_level_colors = c(RColorBrewer::brewer.pal(n = 5, name = "Set1"))
-bargplots = list()
-bargplots[[1]] = ggplot(data=data_summarised, aes(x=method, y=n, fill=predicted.ann_level_1)) +
-  geom_bar(stat="identity") + 
-  scale_fill_manual('Cell Types Annotations',values=high_level_colors)+ 
-  facet_wrap(~type,nrow = 1, ncol = 2) +
-  ggtitle('Cell Types ~ level1') + ylab("Number of Cells")
-  
-#
-celltypes = c('Endothelial','Epithelial','Immune','Stroma')
-
-for(i in seq_along((celltypes)))
-  {
-  data = data_summarised[data_summarised[,1]==celltypes[i],]
-  rgb.palette <- colorRampPalette(c('black',high_level_colors[i], "white"),space = "rgb")
-  colors = rgb.palette(length(unique(data$predicted.ann_level_3))-1)
-  colors[length(colors)+1] = 'orange'
-
-  p = ggplot(data=data, aes(x=method, y=n, fill=predicted.ann_level_3)) +
-    geom_bar(stat="identity") +
-    scale_fill_manual('Cell Types Annotations',values=colors)+ 
-    facet_wrap(~type,nrow = 1, ncol = 2) +
-    ggtitle(paste0(celltypes[i],' ~ level3')) + ylab("")
-
-  bargplots[[i+1]] = p
-    }
-
-#pdf(file.path(params$datapath,'../results/FigureS1_cell_type_annotation_fine_TN.pdf'),width = 20,height = 12)
-bargplots[[1]]+(bargplots[[2]]/bargplots[[3]])+(bargplots[[4]]/bargplots[[5]]) + plot_annotation(tag_levels = 'A')
-#dev.off()
-```
-
 # Tumor - normal lineplots
 ```{r lineplots}
 #just make sure you have all the categories...
@@ -241,8 +189,6 @@ data_summarised_fraction =  data_summarised %>%
 
 #clean-up a bit
 #data_summarised_fraction = data_summarised_fraction[!(data_summarised_fraction$predicted.ann_level_3 %in% c('SM activated stress response','None','Submucosal Secretory','Basal')),]
-
-
 
 #plot
 lineplots <- ggplot(data_summarised_fraction, aes(x=type, y=fraction, group=method)) +
@@ -455,6 +401,8 @@ table = table[-62,]
 write.csv(table,file.path(params$datapath,'../results/Figures_Oct2023/annotation_table_finest.csv'),row.names = F)
 ```
 
+
+# Data tree showing the hierarchical annotation
 ```{r datatress, message= T}
 library(data.tree)
 

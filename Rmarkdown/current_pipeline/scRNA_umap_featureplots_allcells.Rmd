@@ -1,5 +1,5 @@
 ---
-title: "Single Nuclei vs Single cells (non-depleted) -- Normal tissue, 2 patients"
+title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -26,7 +26,6 @@ library(DT) #data viz
 library(plotly)
 
 source('../R/azimuth_analysis.R')
-
 source('../R/infercnv.R')
 ```
 
@@ -43,9 +42,6 @@ metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),ro
 
 metadata = relabeler(metadata)
 ```
-
-
-
 
 
 # get data ready
@@ -173,6 +169,16 @@ png(file.path(params$datapath,'../results/Figures_Oct2023/Fig_S1.png'),width = 1
 (fplots[[6]]|fplots[[7]]|fplots[[8]]|fplots[[9]]|fplots[[10]])) + plot_annotation(tag_levels = 'A') + plot_layout(guides = 'collect')
 dev.off()
 ```
+
+
+
+# session info  
+```{r session, message= T}
+###session
+sessionInfo()
+```
+
+
 
 
 
