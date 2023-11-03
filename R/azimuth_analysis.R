@@ -4,7 +4,11 @@ library(Azimuth)
 library(arrow)
 
 
-azimuth_annotation = function(query = NULL,annotation_threshold = 0, reference_path = "C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/lung_2.0.0/",v2=T,version2.0.1="C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/lung_2.0.1/data/annotations.parquet") {
+#this function is essentially just a wrapper around the Azimuth Shiny App.
+azimuth_annotation = function(query = NULL,annotation_threshold = 0,
+                              reference_path = "C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/lung_2.0.0/",
+                              v2=T,
+                              version2.0.1="C:/Users/renseb01/Documents/scRNA/scRNA/data/HLCA/lung_2.0.1/data/annotations.parquet") {
 
   if(class(query)!='Seurat') stop("You did not provide an object of class Seurat")
   
@@ -36,7 +40,6 @@ query <- ConvertGeneNames(
   reference.names = rownames(x = reference$map),
   homolog.table = 'https://seurat.nygenome.org/azimuth/references/homologs.rds'
 )
-
 
 # Preprocess with SCTransform
 query <- SCTransform(
@@ -114,8 +117,6 @@ query[["query_ref.nn"]] <- FindNeighbors(
   l2.norm = TRUE
 )
 
-
-
 NNTransform <- function(
     object,
     meta.data,
@@ -190,30 +191,16 @@ for(i in 1:6)
   
 }
 
-
-
 new_metadata_columns
-
 
 input_data@meta.data = cbind(input_data@meta.data,new_metadata_columns)
 
 return(list(input_data,qps,query))
 
 }
-# VISUALIZATIONS
-
-# First predicted metadata field, change to visualize other predicted metadata
-#id <- c("ann_level_1","ann_level_2","ann_level_3","ann_level_4", "ann_finest_level")
-#predicted.id <- paste0("predicted.", id)
-
-# DimPlot of the reference
-#DimPlot(object = reference$plot, reduction = "refUMAP", group.by = id, label = TRUE) + NoLegend()
-
-# DimPlot of the query, colored by predicted cell type
-#DimPlot(object = query, reduction = "proj.umap", group.by = predicted.id[2], label = TRUE) + NoLegend()
 
 
-
+#cluster preservation score from Azimuth 
 ClusterPreservationScore <- function(query, ds.amount) {
   query <- DietSeurat(object = query, assays = "refAssay", scale.data = TRUE, counts = FALSE, dimreducs = "integrated_dr")
   if (ncol(x = query) > ds.amount) {
@@ -270,7 +257,7 @@ ClusterPreservationScore <- function(query, ds.amount) {
 
 
 
-###
+#relabel all unknowns as unclassified in a data.frame or seurat object.
 relabeler = function(seurat.data=data){
 
   

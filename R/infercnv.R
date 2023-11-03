@@ -1,5 +1,8 @@
 library(infercnv)
 
+
+#a wrapper around infercnv functions to prepare data, run analysis and calculate a 'cnv score', something that, oddly, the infercnv library does not do.
+
 infercnv_wrapper = function(seurat_obj = combined_permethod[[i]],
                             quantile = 0.5, 
                             out.dir = file.path(params$datapath,'infercnv/24samples/'),
