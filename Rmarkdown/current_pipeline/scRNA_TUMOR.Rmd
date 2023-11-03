@@ -26,7 +26,6 @@ library(DT) #data viz
 library(plotly)
 
 source('../R/azimuth_analysis.R')
-
 source('../R/infercnv.R')
 ```
 
@@ -57,9 +56,7 @@ saveRDS(combined_permethod,file.path(params$datapath,"combined_permethod_pertype
 } else combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeT24.rds'))
 
 combined_permethod = relabeler(combined_permethod)
-
 ```
-
 
 
 # add normal cells to background for UMAP of tumors...
@@ -111,14 +108,13 @@ table(metadata$method[metadata$predicted.ann_level_1=='Epithelial' & metadata$ty
 
 # plots
 ```{r plots}
- pdf(file.path(params$datapath,'../results/Figures_Oct2023/Fig5_UMAPs_CTA_tumor24.pdf'),width = 12,height = 4.5) 
+ pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure5_UMAPs_CTA_tumor24.pdf'),width = 12,height = 4.5) 
  (dimplots[[1]] + barplots_general[[1]] + dimplots[[2]] + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = list(c('A','','B')))
 dev.off()
 ```
 
 # plots
-* Similar to the figure of Lambrechts et al. 2018
-```{r lambrechts barplot}
+```{r barplot inspired by Lambrechts et al 2018}
 sc_sn_plots = list()
 
 #combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
@@ -136,7 +132,6 @@ metadata_simplified$predicted.ann_level_1[metadata_simplified$predicted.ann_leve
 #filter rare celltypes
 celltypes = as.matrix(table(metadata_simplified$predicted.ann_level_3,metadata_simplified$predicted.ann_level_1))
 
-
 flush = 0
 for(c in 1:ncol(celltypes))
 {
@@ -148,7 +143,6 @@ for(c in 1:ncol(celltypes))
 }
 
 metadata_simplified = metadata_simplified[-flush,]
-
 
 #shorten names
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymphatic EC diff.'
@@ -240,7 +234,8 @@ number_of_genes = ggplot(metadata_simplified, aes(nFeature_RNA,predicted.ann_lev
   sc_sn_plots[[i]] = fraction_per_patient|number_of_cells|number_of_genes|cnvMean
 }
 
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/Fig6_barplots_lambrechtsT24.pdf'),width = 14,height = 12) 
+#save plots
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure6_barplots_lambrechtsT24.pdf'),width = 14,height = 12) 
 (sc_sn_plots[[1]]/sc_sn_plots[[2]] ) + plot_annotation(tag_levels = 'A')
 dev.off()
 ```

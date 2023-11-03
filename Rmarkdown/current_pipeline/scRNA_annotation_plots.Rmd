@@ -1,5 +1,5 @@
 ---
-title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -11,8 +11,6 @@ params:
 ---
 
 # Setup  
-* This are plots for cell type annotations
-  
 ```{r, setup,echo=FALSE}
 knitr::opts_knit$set(root.dir = params$datapath)
 knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
@@ -87,8 +85,6 @@ sqrt(chi$statistic/nrow(metadata))
 ```{r fraction unknowns}
 sum(table(metadata$predicted.ann_level_1)[1:4]) / sum(table(metadata$predicted.ann_level_1))
 
-
-
 mean_scores_temp <- metadata %>% 
   group_by(type,method,samplename) %>% 
   summarise(level1=length(predicted.ann_level_1.score[predicted.ann_level_1 != 'None'&predicted.ann_level_1 != 'Unclassified'])/length(predicted.ann_level_1.score),
@@ -117,11 +113,6 @@ plot_annot_fractions<-ggplot(mean_scores, aes(x=type, y=val,group=method)) +
 
 plot_annot_fractions
 
-
-#pdf(file.path(params$datapath,'../results/Figures_July2023/Figure3_annotation_scores24.pdf'),width = 8,height = 7)
-#plot_annot_fractions #/ plot_annot_score +  plot_annotation(tag_levels = 'A')
-#dev.off()
-
 #statistic test (all effects are significant)
 print(anova(lm(value~method*type*levels,mean_scores_temp)))
 ```
@@ -129,7 +120,7 @@ print(anova(lm(value~method*type*levels,mean_scores_temp)))
 
 # Tumor - normal lineplots
 ```{r lineplots}
-#just make sure you have all the categories...
+#just make sure you have all the categories...: check with line below:
 #metadata_complete = metadata %>% complete(predicted.ann_level_3,method,type, patient)
 
 data_summarised = metadata %>% 
@@ -154,10 +145,8 @@ data_summarised$predicted.ann_level_3[data_summarised$predicted.ann_level_3=='In
 #remove immune-depleted cells
 data_summarised = data_summarised[data_summarised$method!='immune depleted cells',]
 
-
 #clean-up a bit
 data_summarised = data_summarised[!(data_summarised$predicted.ann_level_3 %in% c('SM activated stress response','None','Submucosal Secretory','Basal')),]
-
 
 data_summarised2 = data_summarised %>% 
   group_by(predicted.ann_level_1,predicted.ann_level_3,method,patient) %>%
@@ -165,9 +154,6 @@ data_summarised2 = data_summarised %>%
 
 #clean-up a bit 
 data_summarised2 = data_summarised2[data_summarised2$predicted.ann_level_3 != 'None',]
-
-
-
 
 #boxplot
 tumor_normal_transition = ggplot(data_summarised2, aes(x=predicted.ann_level_3,y=fractions,fill=method)) +  
@@ -180,7 +166,6 @@ tumor_normal_transition = ggplot(data_summarised2, aes(x=predicted.ann_level_3,y
   ggtitle('Normal -> Tumor transition (ratio)') +  
   theme_bw()+
      theme(strip.background = element_rect(fill="lightgray",color= 'lightgray'),strip.text.x = element_text(size = 8),legend.position='none',axis.title.x=element_blank(),axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
-
 
 ###summarise for a lineplots
 data_summarised_fraction =  data_summarised %>% 
@@ -202,7 +187,7 @@ lineplots <- ggplot(data_summarised_fraction, aes(x=type, y=fraction, group=meth
   theme_bw()+
   theme(strip.background = element_rect(fill="lightgray",colour = 'lightgray'),strip.text.x = element_text(size = 8,margin=margin()),legend.position='bottom')
 
-  
+#save plot  
 pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure8_cells24.pdf')),width = 12,height = 8)
  ((tumor_normal_transition + lineplots)/guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
 dev.off()
@@ -214,6 +199,7 @@ patient_specific = metadata %>% group_by(patient,method,type) %>% summarise(cell
 
 patient_specific$patient2 = paste0('patient',patient_specific$patient)
 
+#rename the patients for the paper.
 patient_specific$patient2[patient_specific$patient2=='patient4'] = 'patient1'
 patient_specific$patient2[patient_specific$patient2=='patient6'] = 'patient2'
 patient_specific$patient2[patient_specific$patient2=='patient8'] = 'patient3'
@@ -232,7 +218,7 @@ mean(patient_specific$cells)
 metadata %>% group_by(method) %>% summarise(mgenes = mean(nFeature_RNA))
 metadata %>% summarise(mgenes = mean(nFeature_RNA))
 
-
+#plot
 p_cells = ggplot(data=patient_specific, aes(x=type, y=cells, fill=method)) +
     geom_bar(position="dodge", stat="identity") +
     #scale_fill_manual('supertop',values=colors)+ 
@@ -253,6 +239,7 @@ p_genes = ggplot(data=patient_specific, aes(x=type, y=meangenes, fill=method)) +
 
 table(metadata$method)
 
+#save plot  
 pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure2.pdf')),width = 11,height = 6)
 ((p_cells / p_genes  | plot_annot_fractions)/guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
 dev.off()
@@ -263,7 +250,6 @@ dev.off()
 metadata_subset = metadata[metadata$method!='immune depleted cells',]
 metadata_subset = metadata_subset[metadata_subset$type!='Normal',]
 metadata_subset$cnv_score_log = log(metadata_subset$cnv_score,10)
-#metadata_subset = metadata_subset[sample(1:20000,1000),]
 
 cnv_annot_corplot = ggplot(data = metadata_subset, aes(y= cnv_score,x = predicted.ann_level_3.score)) +
   scale_y_continuous(trans= 'log10') +
@@ -273,15 +259,16 @@ cnv_annot_corplot = ggplot(data = metadata_subset, aes(y= cnv_score,x = predicte
   ylab('CNV score (log10)') +
   xlab('level 3 annotation score') +
   theme_bw()
-  
-pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/FigS3.pdf')),width = 8,height = 4)
+
+#save plot    
+pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure_S3.pdf')),width = 8,height = 4)
 cnv_annot_corplot
 dev.off()
 ```
 
 
 
-```{r silhouette,  include= F}
+```{r silhouette, include= F}
 # silhouette metric
 combined_permethodN = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
 combined_permethodT = readRDS(file.path(params$datapath,'combined_permethod_pertypeT24.rds'))
@@ -339,11 +326,8 @@ sil_plot = ggplot(silhouettes_anova, aes(x=method, y=sil_width, fill=method)) +
   theme_bw() + 
   theme(axis.text.x = element_blank(),legend.position = "right") 
 
-
-sil_plot
-
-
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/FigS2.pdf'),width = 6,height = 4) 
+#save plot  
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure_S2.pdf'),width = 6,height = 4) 
 sil_plot
 dev.off()
 ```
@@ -396,19 +380,23 @@ table$Cell[is.na(table$Cell)] = 0
 table$immune.depleted.cells[is.na(table$immune.depleted.cells)] = 0
 
 table = table[-62,]
-#table = table[rowSums(table[,7:9])>100,]
 
+#save table
 write.csv(table,file.path(params$datapath,'../results/Figures_Oct2023/annotation_table_finest.csv'),row.names = F)
 ```
 
 
-# Data tree showing the hierarchical annotation
+# Data tree 
+* showing the hierarchical annotation of all annotations and counting all cells/nuclei.
+* The code is a bit convoluted and idiosyncratic to be honest.
+
 ```{r datatress, message= T}
 library(data.tree)
 
 metadata$method = as.factor(metadata$method)
 metadata$type = as.factor(metadata$type)
 
+#Prepare the tree
 hlca = acme <- Node$new("HLCA")
 
 hlca$Cell_Normal = table(metadata$method,metadata$type)[1,1]
@@ -432,7 +420,7 @@ hlca$annotlevel = 'Human Lung'
 #}
 
 
-#level2
+#Below is a BIG for loop to go down the hierarchy
 for(i in seq_along(hlca$children))
 {
   temp_names = unique(table$level2[table$level1==hlca$children[[i]]$name])
@@ -451,6 +439,7 @@ for(i in seq_along(hlca$children))
   
   hlca$children[[i]]$annotlevel = '1'
   
+  #go down a level
   for(j in seq_along(temp_names))
   {
     hlca$children[[i]]$AddChild(temp_names[j]) 
@@ -476,6 +465,7 @@ for(i in seq_along(hlca$children))
     if(length(temp_names2)>0)
     {
     
+    #go down another level
     for(k in seq_along(temp_names2))
     {
       hlca$children[[i]]$children[[j]]$AddChild(temp_names2[k]) 
@@ -499,6 +489,7 @@ for(i in seq_along(hlca$children))
       if(length(temp_names3)>0 & none_check) hlca$children[[i]]$children[[j]]$children[[k]]$finest = 'Y'
       if(length(temp_names3)>0)
       {
+      #go down another level  
       for(l in seq_along(temp_names3))
       {
         hlca$children[[i]]$children[[j]]$children[[k]]$AddChild(temp_names3[l])
@@ -523,6 +514,7 @@ for(i in seq_along(hlca$children))
         if(length(temp_names4)>0 & none_check) hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$finest = 'Y'
         if(length(temp_names4)>0)
         {
+        #final level (finest)
         for(m in seq_along(temp_names4))
         {
            hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$AddChild(temp_names4[m])
@@ -539,7 +531,6 @@ for(i in seq_along(hlca$children))
         
         hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$annotlevel = '5'
         hlca$children[[i]]$children[[j]]$children[[k]]$children[[l]]$children[[m]]$finest = 'Y'
-        
         }
         }  
       }
@@ -549,8 +540,7 @@ for(i in seq_along(hlca$children))
   }
 }
 
-###can we add nones / unknowns in this loop? 
-#
+#This is another BIG loop to add nones/Unclassified all the way down the hierarchy.
 for(i in seq_along(hlca$children))
   {
   if(length(seq_along(hlca$children[[i]]$children))>0)
@@ -660,12 +650,11 @@ hlca$Unclassified$Nucleus_Tumor = table(metadata_sub$method,metadata_sub$type)[3
 
 hlca$Unclassified$annotlevel = '1'
 
-#
+
 #print(hlca$Stroma,'Cell_Normal','depleted_Normal','Nucleus_Normal','Cell_Tumor','depleted_Tumor','Nucleus_Tumor','annotlevel','finest',limit =500)
 
+#save the table
 write.table(print(hlca,'Cell_Normal','Nucleus_Normal','depleted_Normal','Cell_Tumor','Nucleus_Tumor','depleted_Tumor','annotlevel','finest',limit =500),file.path(params$datapath,'../results/Figures_Oct2023/hierarchy_annotation.csv'),row.names = F,quote=F,sep=',')
-
-
 ```
 
 

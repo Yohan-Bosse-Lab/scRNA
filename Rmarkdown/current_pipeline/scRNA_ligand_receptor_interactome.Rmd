@@ -1,5 +1,5 @@
 ---
-title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -26,7 +26,6 @@ options(stringsAsFactors = FALSE)
 
 # Loading data  
 ```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
-#seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
 filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
 
 metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
@@ -39,8 +38,8 @@ nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
 
 # get data
 ```{r cellchat}
-combined_permethodN = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
-combined_permethodT = readRDS(file.path(params$datapath,'combined_permethod_pertypeT24.rds'))
+combined_permethodN = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds')) # Cell and Nuclei for Normal samples
+combined_permethodT = readRDS(file.path(params$datapath,'combined_permethod_pertypeT24.rds')) # Cell and Nuclei for Tumor samples
 
 combined_permethodN_sub = combined_permethodN
 combined_permethodT_sub = combined_permethodT
@@ -55,8 +54,7 @@ for(i in 1:4){
 
   celltypes_tokeep = c('AT1','AT2','T cell lineage','Fibroblasts','EC capillary','Macrophages')#,'unknown')
   celltypes_toremove = c('Submucosal Secretory','None','SM activated stress response','Basal','unknown','Lymphatic EC mature') #'Innate lymphoid cell NK',
- # if(i<3) combined_permethodN_sub[[i]] = subset(combined_permethodN[[i]], subset = predicted.ann_level_3 %in% celltypes_tokeep)
- # if(i>2) combined_permethodN_sub[[i-2]] = subset(combined_permethodT[[i-2]], subset = predicted.ann_level_3 %in% celltypes_tokeep)
+
   if(i<3) {combined_permethodN_sub[[i]] = subset(combined_permethodN[[i]], subset = predicted.ann_level_3 %notin% celltypes_toremove);
     combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3[combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3=='Innate lymphoid cell NK'] = 'Lymph. cell NK';
     combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3[combined_permethodN_sub[[i]]@meta.data$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymph. EC diff.'
@@ -67,12 +65,11 @@ for(i in 1:4){
   }
 }
 
+#merged
 merged = merge(types[[1]],types[[2]],by = 'meta',all=T)
 merged = merge(merged,types[[3]],by = 'meta',all=T)
 merged = merge(merged,types[[4]],by = 'meta',all=T)
 colnames(merged)= c('types','normal-cell','normal-nuclei','tumor-cell','tumor-nuclei')
-#merged
-
 
 cellchats = list()
 common_cell_types = intersect(unique(combined_permethodN[[1]]@meta.data$predicted.ann_level_3),unique(combined_permethodN[[2]]@meta.data$predicted.ann_level_3))
@@ -89,7 +86,6 @@ meta = seurat.object@meta.data # a dataframe with rownames containing cell meta 
 cell.use = rownames(meta) # extract the cell names from disease data
 #cell.use = rownames(meta)[meta$predicted.ann_level_3 %in% common_cell_types] # extract the cell names from disease data
 #cell.use = rownames(meta)[!(meta$predicted.ann_level_3 %in% c("Lymphatic EC differentiating",'unknown','None'))] 
-
 
 # Prepare input data for CelChat analysis
 data.input = data.input[, cell.use]
@@ -124,14 +120,12 @@ cellchat <- computeCommunProb(cellchat,trim=0.1,type= 'truncatedMean')
 cellchat <- filterCommunication(cellchat, min.cells = 10)
 cellchat <- aggregateNet(cellchat)
 
-
 #Compute the communication probability on signaling pathway
 cellchat <- computeCommunProbPathway(cellchat)
 
 cellchats[[i]] = cellchat 
 print(paste0(i,'---',Sys.time()))
 }
-# get data
 ```
 
 
@@ -143,9 +137,8 @@ cellchats[[2]] = liftCellChat(cellchats[[2]], group.new)
 cellchats[[3]] = liftCellChat(cellchats[[3]], group.new)
 cellchats[[4]] = liftCellChat(cellchats[[4]], group.new)
 
-
+#merge all 4 cell chats objects
 mergedcellchat <- mergeCellChat(cellchats, add.names = c('Cell~Normal','Nucleus~Normal','Cell~Tumor','Nucleus~Tumor'),cell.prefix = T)
-#mergedcellchat <- mergeCellChat(cellchats, add.names = c(1,2,3,4),cell.prefix = T)
 
 
 #stacked bar shows the strengh of interaction in the four groups, ranked based on prevalence in scRNA-seq normal samples.
@@ -176,6 +169,7 @@ netMHC = ggplot(data = data,aes(x=contribution,y=name)) + geom_bar(stat='identit
 
 netPTPRM = netAnalysis_contribution(cellchats[[1]], signaling = 'PTPRM')
 
+#save plots
 pdf(file.path(params$datapath,'../results/Figures_Oct2023/cellchat/cellchat_stacked.pdf'),width = 4,height = 9) 
 stacked1 / netMHC / netPTPRM
 dev.off()
@@ -216,7 +210,7 @@ dev.off()
 #dev.off()
 
 
-#comm probabilities
+#interactions probabilities
 p_com=list()
 names = c('cell_Normal','nucleus_Normal','cell_Tumor','nucleus_Tumor')
 for(i in 1:4){
@@ -226,6 +220,7 @@ for(i in 1:4){
   if(i !=4) p_com[[i]] =  p_com[[i]]+theme(legend.position = 'none')
 }
 
+#save plot
 pdf(file.path(params$datapath,'../results/Figures_Oct2023/cellchat/cellchat1_com_probs.pdf'),width = 16,height = 4) 
 p_com[[1]]|p_com[[3]]|p_com[[2]]|p_com[[4]]
 dev.off()

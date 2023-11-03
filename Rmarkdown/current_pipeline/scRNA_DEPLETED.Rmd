@@ -1,5 +1,5 @@
 ---
-title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -29,12 +29,11 @@ library(plotly)
 library(tidyr)
 
 source('../R/azimuth_analysis.R')
-
 source('../R/infercnv.R')
 ```
 
 # Loading data  
-```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
+```{r loading,message  = T}  
 seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
 filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
 
@@ -44,10 +43,7 @@ metadata = relabeler(metadata)
 metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '___')
 
 nb_cells_per_sample = as.data.frame(table(metadata$unique),stringsAsFactors = F)
-
 ```
-
-
 
 
 # 'SingleCells','SingleNuclei','Depleted' specific plots NORMAL
@@ -63,6 +59,7 @@ for(i in 1:2){
 saveRDS(combined_permethod,file.path(params$datapath,"combined_depletion_pertissue.rds"))
 } else combined_permethod = readRDS(file.path(params$datapath,'combined_depletion_pertissue.rds'))
 
+#The relabeler is just there to change all UNKNOWNS -> unclassified.
 combined_permethod = relabeler(combined_permethod)
 ```
 
@@ -100,7 +97,7 @@ plot_UMAPS = list()
 
 ```
 
-#percentage mt as a function of method and tissue type
+#percentage mitochondrial as a function of method and tissue type
 ```{r percentmt,message  = T,echo=T} 
 data_summarised = metadata_raw %>% group_by(method,type,samplename) %>% summarise(percent.mt = mean(percent.mt))
 p.mt_method_type = ggplot(metadata_raw, aes(x=method, y=percent.mt, fill=method)) +
@@ -110,9 +107,10 @@ p.mt_method_type = ggplot(metadata_raw, aes(x=method, y=percent.mt, fill=method)
   theme_bw()+
   theme(axis.text.x = element_blank(),legend.position = "right") 
 
+#anova for stats
 anova(lm(percent.mt~method*type+samplename, data = data_summarised))
 
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/FigS4.pdf'),width = 6,height = 4) 
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure_S4.pdf'),width = 6,height = 4) 
 p.mt_method_type
 dev.off()
 ```
@@ -120,11 +118,11 @@ dev.off()
 
 # STRESS ANALYSIS
 ```{r loadRDS,message  = T,echo=T}  
+#got this file from OFlanagan_et_al2019. 
 stress_references = read_xlsx(file.path(params$datapath,"512genes_OFlanagan_et_al2019.xlsx"))
 
 #prepare output df
 stress_genes = data.frame(gene = rownames(seurat.objects[[i]]@assays$RNA[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol,]))
-
 
 for(i in 1:24){
   #stress_genesXcell is a matrix of stress genes X cells
@@ -137,6 +135,7 @@ for(i in 1:24){
     }
   stress_genes = cbind(stress_genes,temp2)
 }
+
 #
 colnames(stress_genes)[-1] = filenames
 stress_genes = stress_genes %>%
@@ -159,7 +158,7 @@ stress_genes$patient[regexpr('^10',stress_genes$filenames)>0] = 'P10'
 
 stress_genes$sqrt = stress_genes$value**0.5
 
-#statistical tests
+#statistical test
 anova(lm(value~method*type+patient, data = stress_genes))
 
 stress_genes %>% 
@@ -179,7 +178,7 @@ stress_genes %>%
   group_by(patient) %>%
   summarise(n = median(value,na.rm =T),.groups='keep') 
 
-###plot
+###plots
 p_method = ggplot(stress_genes, aes(x=method, y=value, fill=method)) +
   geom_boxplot(position="dodge",outlier.shape = NA) +
   ylab("mean % of cells expressing a stress-related gene")  +
@@ -232,8 +231,10 @@ cnv_depletion_N$labels$colour = 'score'
 ```
 
 
-```{r lambrechts barplot}
+```{r barplot inspired by Lambrechts et al 2018}
 sc_sn_plots = list()
+
+#here i is to do the analysis plot for Cell vs. Nuclei.
 for(i in 1:2){
 metadata_simplified = combined_permethod[[i]]@meta.data
 metadata_simplified$patient[metadata_simplified$patient == 4] = 1
@@ -245,7 +246,6 @@ metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_leve
 
 #filter rare celltypes
 celltypes = as.matrix(table(metadata_simplified$predicted.ann_level_3,metadata_simplified$predicted.ann_level_1))
-
 
 flush = 0
 for(c in 1:ncol(celltypes))
@@ -259,20 +259,17 @@ for(c in 1:ncol(celltypes))
 
 metadata_simplified = metadata_simplified[-flush,]
 
-
-#shorten names
+#shorten names for visualisation
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymph. EC diff.'
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Lymphatic EC mature'] = 'Lymph. EC matu.'
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Multiciliated lineage'] = 'Multicil. lineage' 
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Innate lymphoid cell NK'] = 'lymphoid cell NK'
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='SM activated stress response'] = 'stress response'
 
-
 #summarise
 data_summarised = metadata_simplified %>% 
   group_by(predicted.ann_level_3,patient,predicted.ann_level_1) %>%
   summarise(n = length(predicted.ann_level_3),sum = sum(nFeature_RNA),cnv_sum = sum(cnv_score),.groups='keep')
-
 
 data_summarised$n_fraction = 0
 data_summarised$nFeature_RNA_mean = 0
@@ -303,7 +300,6 @@ data_summarised$patient = factor(data_summarised$patient,level = c(1,2,3,4))
 metadata_simplified$predicted.ann_level_1 = factor(metadata_simplified$predicted.ann_level_1,level = c('Immune','Epithelial','Endothelial','Stroma','Unclassified'))
 
 
-
 #plots
 fraction_per_patient = ggplot(data_summarised, aes(n_fraction,predicted.ann_level_3,fill = patient)) + 
   geom_col(position = position_fill(reverse = TRUE)) +
@@ -311,7 +307,6 @@ fraction_per_patient = ggplot(data_summarised, aes(n_fraction,predicted.ann_leve
   xlab('Fraction of cells') +
   scale_fill_discrete(type= c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1]) +
   theme_bw() + theme(legend.position = ifelse(i==1,'right','none'),axis.title.x= list(element_blank(),element_text())[[i]])
-
 
 number_of_cells = ggplot(data_summarised, aes(n,predicted.ann_level_3,fill = patient)) +
     geom_col(position = position_stack(reverse = TRUE))  +
@@ -333,16 +328,12 @@ number_of_UMI = ggplot(metadata_simplified, aes(nCount_RNA,predicted.ann_level_3
 
 
 #CNV 
-
 number_of_genes = ggplot(metadata_simplified, aes(nFeature_RNA,predicted.ann_level_3)) + geom_boxplot(fill = "deeppink") +
     facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
   ylab('clusters') +
   xlab('Number of genes per cell') +
    theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),
   strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
-
-
-
 
 cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + geom_boxplot(fill = "aquamarine") + scale_x_continuous(trans= 'log10',breaks = c(0.0001,0.001,0.01), label = c(0.0001,0.001,0.01),limits = c(0.00004,0.02)) +
     facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
@@ -351,37 +342,25 @@ cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + ge
     theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),
                        strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
 
-
-
  if(i ==1) sc_sn_plots[[i]] = number_of_cells
  if(i ==2) sc_sn_plots[[i]] = number_of_cells
-  
 }
+
 
 #pdf(file.path(params$datapath,'../results/Figures_august2023/Suppl_Fig9_barplots_lambrechtsDepletion.pdf'),width = 14,height = 12) 
 (sc_sn_plots[[1]]/sc_sn_plots[[2]] ) + plot_annotation(tag_levels = list(c('A','B','C','D','E','F','G')))
 #dev.off()
 ```
 
-
-
 ```{r save plots, message= T}
-#empty_placeholder = ggplot() + theme_void()
-###plots
-  
-  pdf(file.path(params$datapath,'../results/Figures_Oct2023/Fig9_UMAPs_depletion24.pdf'),width = 12,height = 9) 
+#save plots
+  pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure9_UMAPs_depletion24.pdf'),width = 12,height = 9) 
  ((plot_depletion_N + barplots_general[[1]] + plot_depletion_T + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) / 
  
   (sc_sn_plots[[1]]|sc_sn_plots[[2]] | p_method_type) + plot_layout(widths = c(10,10,2))) + plot_annotation(tag_levels = list(c('A','','B','','C','D','E')))
           #                                                                                                                                     )
   dev.off()
-
-#+ plot_annotation(tag_levels = list(c('A','','B','','C','D',''))e
 ```
-
-
-
-
 
 # session info  
 ```{r session, message= T}

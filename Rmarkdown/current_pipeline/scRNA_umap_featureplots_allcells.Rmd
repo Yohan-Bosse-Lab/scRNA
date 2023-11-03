@@ -162,14 +162,12 @@ for(i in 1:2)
   fplots[[(i*5)]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Stroma_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Stroma markers')+ umap_theme()
 }
 
-
-#save
-png(file.path(params$datapath,'../results/Figures_Oct2023/Fig_S1.png'),width = 1560,height = 600)
+#save plot as png (because a .pdf as a vectorized image is too big)
+png(file.path(params$datapath,'../results/Figures_Oct2023/Figure_S1.png'),width = 1560,height = 600)
 ((fplots[[1]]|fplots[[2]]|fplots[[3]]|fplots[[4]]|fplots[[5]]) /
 (fplots[[6]]|fplots[[7]]|fplots[[8]]|fplots[[9]]|fplots[[10]])) + plot_annotation(tag_levels = 'A') + plot_layout(guides = 'collect')
 dev.off()
 ```
-
 
 
 # session info  

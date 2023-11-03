@@ -1,5 +1,5 @@
 ---
-title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -32,7 +32,7 @@ source('../R/infercnv.R')
 
 
 # Loading data  
-```{r loading,message  = T, fig.width = 11, fig.height=8,echo=T}  
+```{r loading,message  = T}  
 #seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
 filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
 
@@ -158,7 +158,6 @@ for(i in 1:2){
 
 barplots[[(i*2)+c-2]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_3)) +
     geom_bar(stat="identity")+scale_fill_manual( ifelse(c==1,'Cell Types (level3) ~ Epithelial','Cell Types (level3) ~ Immune'),values= color_vector) + ylab('Total Number of Cells')+theme_classic() + xlab('')+theme(axis.title = element_text(size = 8),legend.position = ifelse(i ==1,"none",'right'))
-
 }}
 
 ```
@@ -167,6 +166,7 @@ barplots[[(i*2)+c-2]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicte
 #cell types general plots 
 ```{r celltypes plots}
 barplots_general = list()
+
 for(i in 1:2){
   
   data_summarised = combined_permethod[[i]]@meta.data %>% 
@@ -176,8 +176,6 @@ for(i in 1:2){
 barplots_general[[i]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_1)) +
     geom_bar(stat="identity")+scale_fill_manual('Cell Types (level1)',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+theme_classic()+theme(axis.title = element_text(size = 8),legend.position = ifelse(i ==1,"none",'right')) +ylab('Total Number of cells') + xlab('') 
 }
-
-
 
 ```
 
@@ -196,21 +194,17 @@ plot_UMAPS = list()
           axis.ticks.y = element_blank(),
           axis.text.x = element_blank(),
           axis.text.y = element_blank())
-  #+ 
- #    geom_text(data=seurat_clusters[[1]], aes(x=UMAP_1,y=UMAP_2,label= seurat_clusters))
-  
-   plot_SC$labels$colour = 'Cell types (level1)' 
-   
+ 
+  plot_SC$labels$colour = 'Cell types (level1)' 
    
   plot_SN=DimPlot(combined_permethod[[2]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = brewer.pal(n = 5, name = "Set1"),pt.size=0.2) + ggtitle('Nucleus') + guides(shape='none') +theme(legend.position = "none",axis.title = element_text(size = 8),axis.text =element_text(size = 8),
           axis.ticks.x = element_blank(),
           axis.ticks.y = element_blank(),
           axis.text.x = element_blank(),
-          axis.text.y = element_blank()) #+ 
-#     geom_text(data=seurat_clusters[[2]], aes(x=UMAP_1,y=UMAP_2,label= seurat_clusters))
-  plot_SN$labels$colour = 'Cell types (level1)'  
+          axis.text.y = element_blank())
 
-  
+    plot_SN$labels$colour = 'Cell types (level1)'  
+
 ###plots
 for(c in seq_along(cell_type)){
 
@@ -237,22 +231,19 @@ for(i in 1:2){
           axis.ticks.y = element_blank(),
           axis.text.x = element_blank(),
           axis.text.y = element_blank())
-  #plot_UMAPS[[(i*2)+c-2]]$labels$colour = ifelse(c==1,'Epithelial','Immune') 
 }}
  
-  
-  pdf(file.path(params$datapath,'../results/Figures_Oct2023/Fig3_UMAPs_CTA_normal24.pdf'),width = 12,height = 10.5) 
+#save plots  
+  pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure3_UMAPs_CTA_normal24.pdf'),width = 12,height = 10.5) 
  (plot_SC + barplots_general[[1]] + plot_SN + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) / 
  (plot_UMAPS[[2]] + barplots[[2]] + plot_UMAPS[[4]] + (barplots[[4]] + guides(fill=guide_legend(ncol=2))) + plot_layout(widths = c(10,1,10,1)))  / (plot_UMAPS[[1]] + barplots[[1]] + plot_UMAPS[[3]] + (barplots[[3]] + guides(fill=guide_legend(ncol=2))) +plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = list(c('A','','B','','C','','D','','E','','F','')))
   dev.off()
 ```
 
 # plots
-* Similar to the plots of Lambrechts 2018.
-```{r lambrechts barplot}
+```{r barplot inspired by Lambrechts et al 2018}
 sc_sn_plots = list()
 
-#combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
 for(i in 1:2){
 metadata_simplified = combined_permethod[[i]]@meta.data
 
@@ -277,16 +268,13 @@ for(c in 1:ncol(celltypes))
   flush = c(temp,flush)
 }
 
-
 metadata_simplified = metadata_simplified[-flush,]
-
 
 #shorten names
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Lymphatic EC differentiating'] = 'Lymph. EC diff.'
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Lymphatic EC mature'] = 'Lymph. EC matu.'
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Multiciliated lineage'] = 'Multicil. lineage' 
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='Innate lymphoid cell NK'] = 'lymphoid cell NK' 
-
 
 #summarise
 data_summarised = metadata_simplified %>% 
@@ -297,7 +285,6 @@ data_summarised$n_fraction = 0
 data_summarised$nFeature_RNA_mean = 0
 data_summarised$cnv_mean = 0
 unique_patients = unique(data_summarised$patient)
-
 
 #keep best labels
 for(u in unique(data_summarised$predicted.ann_level_3)){  
@@ -368,7 +355,8 @@ cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + ge
   sc_sn_plots[[i]] = fraction_per_patient|number_of_cells|number_of_genes
 }
 
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/Fig4_barplots_lambrechtsN24.pdf'),width = 11,height = 12) 
+#save plots
+pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure4_barplots_lambrechtsN24.pdf'),width = 11,height = 12) 
 (sc_sn_plots[[1]]/sc_sn_plots[[2]] ) + plot_annotation(tag_levels = 'A')
 dev.off()
 ```

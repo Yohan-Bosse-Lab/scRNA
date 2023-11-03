@@ -1,5 +1,5 @@
 ---
-title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -14,6 +14,7 @@ params:
 * This is a scRNA project 
 * Note that you can create this document by running:  
   * `Rscript -e "rmarkdown::render('scRNA_sannotation_all.RMd',params = list())"` and `knit`-it directly in `RStudio`.
+  * but usually, I just run it chunk by chunk directly in Rstudio.
   
 ```{r, setup,echo=FALSE}
 knitr::opts_knit$set(root.dir = params$datapath)
@@ -30,6 +31,7 @@ library(patchwork) #data viz
 library(ggplot2) #data viz
 library(DT) #data viz
 library(plotly)
+
 source('../R/doubletfinder.R')
 source('../R/azimuth_analysis.R')
 source('../R/infercnv.R')
@@ -38,8 +40,6 @@ source('../R/infercnv.R')
 
 # Loading data  
   * `barcodes.tsv.gz`, `features.tsv.gz` and `matrix.mtx.gz` files come directly from  `cell ranger`.
-
-
 ```{r filenames,message  = T, fig.width = 11, fig.height=8,echo=T}  
 filenames =  list.files('.',pattern = '-C[ST]T-',full.names = F)
 filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix')
@@ -48,7 +48,7 @@ filenames
 ```
 
 #prepare the seurat object and metadata.
-```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F}  
+```{r qc,message  = T}  
 #create seurat objects
 seurat.objects = list()
 l = length(filenames)
@@ -103,7 +103,6 @@ names(seurat.objects) =  filenames
   * find and remove doublet (assuming a 5% doublet rate).
 ```{r doublet finder, echo=T, message=FALSE, warning=FALSE,include = FALSE, timehook=T}
 #precomputed pk's for doubletfinder
-#pK_empirical_in = c(0.05,0.29,0.09,0.01, 0.030,0.010,0.020,0.300,0.300,0.001,0.210,0.060,0.010,0.090,0.240,0.040,0.2,0.19,0.24,0.05)
 pK_empirical_in = c(0.05,0.29,0.04,0.09,0.01,0.16,0.030,0.010,0.020,0.300,0.300,0.001,0.210,0.060,0.010,0.090,0.240,0.040,0.2,0.19,0.03,0.24,0.05,0.02)
 pK_empirical_out =rep(0,length(filenames))
 for(i in 1:length(filenames)) {
@@ -147,7 +146,6 @@ datatable(QC_filters,caption = htmltools::tags$caption(htmltools::strong("Filter
 
 # SAVE DATA  
 ```{r SAVE DATA,message  = T, fig.width = 11, fig.height=8,echo=T}  
-
 saveRDS(seurat.objects, file = file.path(params$datapath,"adeno.24samples_27_07_23.rds"))
 ```
 
@@ -190,10 +188,9 @@ write.csv(metadata,file.path(params$datapath,"adeno.24samples_metadata.csv"))
 ```
 
 
-# DONE DATA  
+# DONE  
 ```{r done,message  = T}  
 print('Done')
-
 ```
 
 
