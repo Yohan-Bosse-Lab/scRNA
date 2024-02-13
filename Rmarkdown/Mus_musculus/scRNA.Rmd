@@ -1,0 +1,183 @@
+---
+title: "Single Cells - 2 Mus musculus samples"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/joseph_vincent/data'
+---
+
+# Setup  
+* This is a scRNA project 
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+#Requirements
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(SeuratDisk) #scRNA analyses
+library(sctransform) #data normalization
+library(scater) #outlier values predictions
+library(DoubletFinder) #find doublets? 
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+source('../../scRNA/scRNA/R/doubletfinder.R')
+```
+
+# Loading data  
+  * `barcodes.tsv.gz`, `features.tsv.gz` and `matrix.mtx.gz` files come directly from  `cell ranger`.
+```{r filenames,message  = T, fig.width = 11, fig.height=8,echo=T}  
+filenames =  list.files('.',pattern = 'mm10',full.names = F)
+filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix')
+filenames
+```
+
+#Load cell rangers datasets and do the initial filtering
+```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F}  
+#create seurat objects
+seurat.objects = list()
+l = length(filenames)
+
+#create filters matrix
+QC_filters=data.frame(nCount_min=rep(0,l),nCount_max=rep(0,l),
+                    nFeature_RNA_min=rep(0,l),nFeature_RNA_max=rep(0,l),
+                    percent.mt_min=rep(0,l),percent.mt_max=rep(0,l))
+
+
+for(i in 1:length(filenames)) {
+  # Read 10x data
+  cts <- Read10X(data.dir = filepaths[i])
+  seurat.objects[[i]] = CreateSeuratObject(counts = cts)
+  
+  print(seurat.objects[[i]])
+  seurat.objects[[i]][["percent.mt"]] <- PercentageFeatureSet(seurat.objects[[i]], pattern = "^mt-")
+
+  # Filters
+  QC_filters[i,1:2] = attr(isOutlier(seurat.objects[[i]]@meta.data$nCount),'thresholds')
+  QC_filters[i,3:4] = attr(isOutlier(seurat.objects[[i]]@meta.data$nFeature_RNA),'thresholds')
+  QC_filters[i,5:6] = attr(isOutlier(seurat.objects[[i]]@meta.data$percent.mt),'thresholds')
+  
+  # Generate metadata
+  seurat.objects[[i]]@meta.data$samplename = strsplit(filenames[i],split = '_')[[1]][1]
+  seurat.objects[[i]]@meta.data$filename = filenames[i]
+
+  # Normalisation using SCT
+  seurat.objects[[i]] <- SCTransform(seurat.objects[[i]], method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = F)
+  
+  print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (subsetting, normalisation)'))
+}
+names(seurat.objects) =  filenames
+```
+
+#Merge raw matrices (for violon plots)
+```{r mergeraw}
+seurat.objects[[3]] =  merge(seurat.objects[[1]],seurat.objects[[2]])
+viol_plots = VlnPlot(seurat.objects[[3]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,group.by='samplename')
+
+#Then subset based on QC filters defined above
+for(i in 1:2){
+  # Subset
+  seurat.objects[[i]] <- subset(seurat.objects[[i]], subset = nCount_RNA <  QC_filters[i,2])
+  seurat.objects[[i]] <- subset(seurat.objects[[i]], subset = nFeature_RNA <  QC_filters[i,4])
+  seurat.objects[[i]] <- subset(seurat.objects[[i]], subset = percent.mt <  QC_filters[i,6])
+}
+
+#show filters defined by isOutlier()
+rownames(QC_filters) = filenames
+QC_filters = signif(QC_filters,4)
+datatable(QC_filters,caption = htmltools::tags$caption(htmltools::strong("Filters as calculated by isOutlier()"), style="color:darkred"))
+```
+
+# Doublet Finder
+  * find and remove doublet (assuming a 5% doublet rate).
+  * THis relies on `doubletfinder_wrapper()` which I wrote (in doubletfinder.R). It is a simple wrapper for several functions in `DoubletFinder`. 
+```{r doublet finder, echo=T, message=FALSE, warning=FALSE,include = FALSE, timehook=T}
+#precomputed pk's for doubletfinder
+pK_empirical_in = c(0.17,0.1)
+pK_empirical_out =rep(0,length(filenames))
+for(i in 1:2) {
+  doubletfinder.out = doubletfinder_wrapper(seurat.objects[[i]], pK_empirical = pK_empirical_in[i])
+ #doubletfinder.out = doubletfinder_wrapper(seurat.objects[[i]])
+  seurat.objects[[i]] = doubletfinder.out[[1]]
+  pK_empirical_out[i] =  doubletfinder.out[[2]]
+  colnames(seurat.objects[[i]]@meta.data)[regexpr('pANN',colnames(seurat.objects[[i]]@meta.data))>0] = 'pANN_doublet_finder'
+}
+```
+
+#Save filtered data as .h5Seurat objects
+```{r save}
+SaveH5Seurat(seurat.objects[[1]], overwrite = T,filename =  file.path(params$datapath,'CIH_mm10_vM23/CIH_mm10_vM23.h5Seurat'))
+SaveH5Seurat(seurat.objects[[2]], overwrite = T,filename =  file.path(params$datapath,'NX_mm10_vM23/NX_mm10_vM23.h5Seurat'))
+saveRDS(seurat.objects, file = file.path(params$datapath,"mm_2samples.rds"))
+```
+
+
+#annotation 
+* I'm not actually doing it here, because I am running it directly [here](https://app.lungmap.net/app/azimuth-mouse-lung-cellref-seed). I use either `CIH_mm10_vM23.h5Seurat` or `NX_mm10_vM23.h5Seurat` and generate the annotations from there. Once this is done, I save the `azimuth_results.Rds` objects, and load it back below.
+
+```{r get annotations here}
+annotations_CIH = readRDS(file.path(params$datapath,'CIH/azimuth_results.Rds'))#these are annotations downloaded directly from the webserver.
+annotations_NX = readRDS(file.path(params$datapath,'NX/azimuth_results.Rds')) #these are annotations downloaded directly from the webserver.
+
+#add metadata
+seurat.objects[[1]] <- AddMetaData(object = seurat.objects[[1]],metadata = annotations_CIH$pred.df)
+seurat.objects[[2]] <- AddMetaData(object = seurat.objects[[2]],metadata = annotations_NX$pred.df)
+
+#add reference UMAPs
+seurat.objects[[1]][['proj.umap']] <- CreateDimReducObject(embeddings = annotations_CIH$umap@cell.embeddings, key = 'proj.umap', assay = 'RNA')
+seurat.objects[[2]][['proj.umap']] <- CreateDimReducObject(embeddings = annotations_NX$umap@cell.embeddings, key = 'proj.umap', assay = 'RNA')
+
+#merge object (remember seurat.objects[[3]] is already the raw data)
+seurat.objects[[4]] =  merge(seurat.objects[[1]],seurat.objects[[2]],merge.dr = 'proj.umap')
+
+#annotations
+write.csv(seurat.objects[[4]]@meta.data,file.path(params$datapath,'metadata_mus_musculus_annotations.csv'))
+
+#Expression data (normalised)
+data = GetAssayData(seurat.objects[[4]])
+data = round(data,6)
+write.csv(data,file.path(params$datapath,'assaydata_vst.csv'))
+
+saveRDS(seurat.objects, file = file.path(params$datapath,"mm_2samples.rds"))
+write.csv(seurat.objects[[4]]@meta.data,file.path(params$datapath,'metadata_mm.csv'))
+```
+
+```{r plots, eval = T}
+#dimplots
+dimplot_lev1 = DimPlot(seurat.objects[[4]],reduction = 'proj.umap',group.by = 'predicted.lineage_level1',label = T, repel = T, order = T,pt.size = 0.5) + theme(axis.title = element_text(size = 8),legend.position = "none") + ggtitle('Annotation level 1 ~ lung tissue\nMus musculus (scRNA)')
+
+dimplot_lev3 = DimPlot(seurat.objects[[4]],reduction = 'proj.umap',group.by = 'predicted.celltype_level3',label = T, repel = T, order = T,pt.size = 0.5) + theme(axis.title = element_text(size = 8),legend.position = "none") + ggtitle('Annotation level 3 ~ lung tissue\nMus musculus (scRNA)')
+
+dimplot_sam = DimPlot(seurat.objects[[4]],reduction = 'proj.umap',group.by = 'samplename',label = F, repel = T, order = T,pt.size = 0.5) + theme(axis.title = element_text(size = 8),legend.position = "right") + ggtitle('samplename ~ lung tissue\nMus musculus (scRNA)')
+
+
+#Below are human genes. We can only plot those, if we use human data, so we won't for now...
+#hormonal_receptors = c('AR','SLC39A9', 'CACNA1C', 'ESR1', 'ESR2', 'GPER1', 'PGR', 'PGRMC1', 'PGRMC2', 'PAQR5', 'PAQR6', 'PAQR7', 'PAQR8', 'HIF1A', 'EPAS1', 'NFE2L2','PAQR9')
+'PAQR9'
+#featplot = FeaturePlot(seurat.objects[[3]],features = hormonal_receptors,order = T)
+
+#pdf(file.path('joseph_vincent/results/featplot_2samples.pdf'),width = 12,height = 12) 
+#featplot 
+#dev.off()
+
+pdf(file.path(params$datapath,'joseph_vincent/results/UMAP_2samples.pdf'),width = 12,height = 12) 
+(dimplot_lev1 | dimplot_lev3) / (dimplot_sam  | viol_plots)
+dev.off()
+  
+```
+
+
+
+# session info  
+```{r session, message= T}
+###session
+sessionInfo()
+```
+
