@@ -160,14 +160,14 @@ dimplot_sam = DimPlot(seurat.objects[[4]],reduction = 'proj.umap',group.by = 'sa
 
 #Below are human genes. We can only plot those, if we use human data, so we won't for now...
 #hormonal_receptors = c('AR','SLC39A9', 'CACNA1C', 'ESR1', 'ESR2', 'GPER1', 'PGR', 'PGRMC1', 'PGRMC2', 'PAQR5', 'PAQR6', 'PAQR7', 'PAQR8', 'HIF1A', 'EPAS1', 'NFE2L2','PAQR9')
-'PAQR9'
+#'PAQR9'
 #featplot = FeaturePlot(seurat.objects[[3]],features = hormonal_receptors,order = T)
 
 #pdf(file.path('joseph_vincent/results/featplot_2samples.pdf'),width = 12,height = 12) 
 #featplot 
 #dev.off()
 
-pdf(file.path(params$datapath,'joseph_vincent/results/UMAP_2samples.pdf'),width = 12,height = 12) 
+pdf(file.path(params$datapath,'../results/UMAP_2samples.pdf'),width = 12,height = 12) 
 (dimplot_lev1 | dimplot_lev3) / (dimplot_sam  | viol_plots)
 dev.off()
   
