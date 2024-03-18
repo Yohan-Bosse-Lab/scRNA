@@ -51,10 +51,11 @@ Epithelial = c('KRT7','PIGR','ELF3','CYB5A','KRT8','KRT19','TACSTD2','MUC1','S10
 Endothelial = c('PTRF','CLDN5','AQP1','PECAM1','NPDC1','VWF','GNG11','RAMP2','IGFBP7','CLEC14A')
 Stroma = c('TPM2','DCN','MGP','SPARC','CALD1','LUM','TAGLN','IGFBP7','COL1A2','C1S')
 features = c('EPCAM', 'CLDN5', 'COL1A2','PTPRC')
+
 random100 = sample(seurat.objects[[1]]@assays$refAssay@data@Dimnames[[1]],100)
   
   
-all_features = unique(c(Immune,Epithelial,Endothelial,Stroma,features,random100))
+all_features = unique(c(Immune,Epithelial,Endothelial,Stroma,features))#,random100))
 seurat.objects.subsetted = list()
 
 for(i in 1:24){
@@ -62,7 +63,7 @@ for(i in 1:24){
 }
 
 #combine
-combined = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)],merge.dr = 'proj.umap')
+combined = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)])
 
 #
 combined@meta.data$predicted.ann_level_3_simplified = combined@meta.data$predicted.ann_level_3

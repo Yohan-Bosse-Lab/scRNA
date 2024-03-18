@@ -13,10 +13,10 @@ params:
 * This is a scRNA project 
 ```{r, setup,echo=FALSE}
 knitr::opts_knit$set(root.dir = params$datapath)
-knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+knitr::opts_chunk$set(echo=TRUE, message=TRUE, warning=TRUE, cache=FALSE, cache.lazy=FALSE)
 ```
 
-#Requirements
+# Requirements
 ```{r, requirements}
 library(Seurat) #scRNA analyses
 library(SeuratDisk) #scRNA analyses
@@ -39,7 +39,7 @@ filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix')
 filenames
 ```
 
-#Load cell rangers datasets and do the initial filtering
+# Load cell rangers datasets and do the initial filtering
 ```{r qc,message  = T, fig.width = 11, fig.height=8,echo=F}  
 #create seurat objects
 seurat.objects = list()
@@ -76,7 +76,7 @@ for(i in 1:length(filenames)) {
 names(seurat.objects) =  filenames
 ```
 
-#Merge raw matrices (for violon plots)
+# Merge raw matrices (for violon plots)
 ```{r mergeraw}
 seurat.objects[[3]] =  merge(seurat.objects[[1]],seurat.objects[[2]])
 viol_plots = VlnPlot(seurat.objects[[3]], features = c("nFeature_RNA", "nCount_RNA", "percent.mt"), ncol = 3,group.by='samplename')
@@ -111,16 +111,16 @@ for(i in 1:2) {
 }
 ```
 
-#Save filtered data as .h5Seurat objects
-```{r save}
+# Save filtered data as .h5Seurat objects
+```{r save, echo = T}
 SaveH5Seurat(seurat.objects[[1]], overwrite = T,filename =  file.path(params$datapath,'CIH_mm10_vM23/CIH_mm10_vM23.h5Seurat'))
 SaveH5Seurat(seurat.objects[[2]], overwrite = T,filename =  file.path(params$datapath,'NX_mm10_vM23/NX_mm10_vM23.h5Seurat'))
 saveRDS(seurat.objects, file = file.path(params$datapath,"mm_2samples.rds"))
 ```
 
 
-#annotation 
-* I'm not actually doing it here, because I am running it directly [here](https://app.lungmap.net/app/azimuth-mouse-lung-cellref-seed). I use either `CIH_mm10_vM23.h5Seurat` or `NX_mm10_vM23.h5Seurat` and generate the annotations from there. Once this is done, I save the `azimuth_results.Rds` objects, and load it back below.
+# Annotation 
+  * I'm not actually doing it here, because I am running it directly [here](https://app.lungmap.net/app/azimuth-mouse-lung-cellref-seed). I use either `CIH_mm10_vM23.h5Seurat` or `NX_mm10_vM23.h5Seurat` and generate the annotations from there. Once this is done, I save the `azimuth_results.Rds` objects, and load it back below.  
 
 ```{r get annotations here}
 annotations_CIH = readRDS(file.path(params$datapath,'CIH/azimuth_results.Rds'))#these are annotations downloaded directly from the webserver.
@@ -167,9 +167,9 @@ dimplot_sam = DimPlot(seurat.objects[[4]],reduction = 'proj.umap',group.by = 'sa
 #featplot 
 #dev.off()
 
-pdf(file.path(params$datapath,'../results/UMAP_2samples.pdf'),width = 12,height = 12) 
+#pdf(file.path(params$datapath,'../results/UMAP_2samples.pdf'),width = 12,height = 12) 
 (dimplot_lev1 | dimplot_lev3) / (dimplot_sam  | viol_plots)
-dev.off()
+#dev.off()
   
 ```
 

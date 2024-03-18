@@ -40,7 +40,6 @@ metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),ro
 metadata = relabeler(metadata)
 ```
 
-
 # 'SingleCells','SingleNuclei','Depleted' specific plots NORMAL
 ```{r integration,  include= F}
 if(file.exists(file.path(params$datapath,'combined_permethod_pertypeN24.rds')) == F){
@@ -49,7 +48,7 @@ for(i in 1:2){
   if(i == 1) samples = c(1:length(filenames))[regexpr('CST-...._all_',filenames)>0]
   if(i == 2) samples = c(1:length(filenames))[regexpr('CST-...._SN_',filenames)>0]
  
-  combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
+  combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]])
  
   print(paste0('Done ',i,' --- Time is: ', Sys.time()))
 }
@@ -363,5 +362,5 @@ dev.off()
 
 
 ```{r done}
-print('done')
+sessionInfo()
 ```

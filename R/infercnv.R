@@ -7,22 +7,28 @@ infercnv_wrapper = function(seurat_obj = combined_permethod[[i]],
                             quantile = 0.5, 
                             out.dir = file.path(params$datapath,'infercnv/24samples/'),
                             level = 'predicted.ann_level_1',
+                            reference_group = 'Immune',
                             gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional')){
   #infercnv
-  raw_counts_matrix = as.matrix(GetAssayData(object = seurat_obj, slot = "data"))
+  raw_counts_matrix = as.matrix(GetAssayData(object = seurat_obj, layer = "count"))
   quantile_threshold = quantile(rowSums(raw_counts_matrix),probs  = seq(0,1,by =0.1))[round(quantile*10)]
   raw_counts_matrix = raw_counts_matrix[rowSums(raw_counts_matrix) > quantile_threshold,]
 
   annotations_file = data.frame(annotations = seurat_obj@meta.data[,colnames(seurat_obj@meta.data) %in% level])
   rownames(annotations_file) = rownames(seurat_obj@meta.data)
 
+  ###
+ # raw_counts_matrix = raw_counts_matrix[,1:1000]
+ # annotations_file =  data.frame(annotations = annotations_file[1:1000,],row.names = rownames(annotations_file)[1:1000])
+  ###
+  
   gene_order_file=read.delim(gene_order_file,header = F,row.names = 1)
   gene_order_file[,1] = as.factor(gene_order_file[,1])
 
   infercnv_object_example <- infercnv::CreateInfercnvObject(raw_counts_matrix=raw_counts_matrix, 
                                                           gene_order_file=gene_order_file,
                                                           annotations_file=annotations_file ,
-                                                          ref_group_names=c("Immune"),
+                                                          ref_group_names=reference_group,
                                                           min_max_counts_per_cell = c(1, +Inf))
 
   infercnv_object_example <- infercnv::run(infercnv_object_example,

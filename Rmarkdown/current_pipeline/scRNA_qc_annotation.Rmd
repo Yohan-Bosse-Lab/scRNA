@@ -42,7 +42,7 @@ source('../R/infercnv.R')
   * `barcodes.tsv.gz`, `features.tsv.gz` and `matrix.mtx.gz` files come directly from  `cell ranger`.
 ```{r filenames,message  = T, fig.width = 11, fig.height=8,echo=T}  
 filenames =  list.files('.',pattern = '-C[ST]T-',full.names = F)
-filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix')
+filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix.h5')
 
 filenames
 ```
@@ -62,7 +62,7 @@ QC_filters=data.frame(nCount_min=rep(0,l),nCount_max=rep(0,l),
 for(i in 1:length(filenames)) {
 #for(i in c(1:4,17:20)) {
   # Read 10x data
-  cts <- Read10X(data.dir = filepaths[i])
+  cts <- Read10X_h5(filepaths[i])
   seurat.objects[[i]] = CreateSeuratObject(counts = cts)
   print(seurat.objects[[i]])
   seurat.objects[[i]][["percent.mt"]] <- PercentageFeatureSet(seurat.objects[[i]], pattern = "^MT-")
@@ -164,6 +164,7 @@ for(i in seq_along(filenames)){
                               quantile = 0.5, 
                               out.dir = file.path(params$datapath,'infercnv/24samples/',filenames[i]),
                               level = 'predicted.ann_level_1',
+                              reference_group = 'Immune',
                               gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional')))
   
   seurat.objects[[i]] = infercnv_out[[1]]
@@ -190,7 +191,7 @@ write.csv(metadata,file.path(params$datapath,"adeno.24samples_metadata.csv"))
 
 # DONE  
 ```{r done,message  = T}  
-print('Done')
+sessionInfo()
 ```
 
 

@@ -189,7 +189,7 @@ lineplots <- ggplot(data_summarised_fraction, aes(x=type, y=fraction, group=meth
 
 #save plot  
 pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure8_cells24.pdf')),width = 12,height = 8)
- ((tumor_normal_transition + lineplots)/guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
+ ((tumor_normal_transition + lineplots) / guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
 dev.off()
 ```
 
