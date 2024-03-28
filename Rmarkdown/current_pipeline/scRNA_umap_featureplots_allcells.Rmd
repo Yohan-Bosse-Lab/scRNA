@@ -127,10 +127,71 @@ dimplots_patient = DimPlot(combined, reduction = "proj.umap", group.by = "patien
     umap_theme() + theme(plot.title = element_text(size = 42),legend.text = element_text(size=20),legend.title = element_text(size=28), legend.position = 'right')
 
 
-png(file.path(params$datapath,'../results/Figures_Oct2023/UMAP_allcells.png'),width = 3000,height = 2250)
+png(file.path(params$datapath,'../results/Figures_March2024/UMAP_allcells.png'),width = 3000,height = 2250)
 (dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 34))
 dev.off()
 ```
+
+```{r per patient, message= T}
+filenames_df = data.frame(filenames = filenames,
+                          patient = sapply(strsplit(filenames, "-",fixed = T), "[",1),
+                          method = sapply(strsplit(filenames, "_",fixed = T), "[",2),
+                          tissue = sapply(strsplit(filenames, "-",fixed = T), "[",2))
+
+filenames_df$method = gsub('all','Cell',filenames_df$method)
+filenames_df$method = gsub('SN','Nucleus',filenames_df$method)
+filenames_df$tissue = gsub('CST','Normal',filenames_df$tissue)
+filenames_df$tissue = gsub('CTT','Tumor',filenames_df$tissue)
+filenames_df$patient = gsub('4','patient1',filenames_df$patient)
+filenames_df$patient = gsub('6','patient2',filenames_df$patient)
+filenames_df$patient = gsub('8','patient3',filenames_df$patient)
+filenames_df$patient = gsub('10','patient4',filenames_df$patient)
+
+#cell types general plots 
+barplots_general = list()
+plot_UMAPS = list()
+for(i in 1:24){
+  data_summarised = seurat.objects[[i]]@meta.data %>% 
+      group_by(predicted.ann_level_1,patient) %>%
+      summarise(n = length(predicted.ann_level_1),.groups='keep')
+
+  legend_position = ifelse(i ==9|i ==10,"right",'none')
+  print(paste0('i ', legend_position)) 
+  
+barplots_general[[i]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_1)) +
+    geom_bar(stat="identity")+scale_fill_manual('Cell Types (level1)',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+theme_classic()+theme(axis.title = element_text(size = 8),legend.position = legend_position) +ylab('Total Number of cells') + xlab('')
+
+###plots
+  plot_UMAP=DimPlot(seurat.objects[[i]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = brewer.pal(n = 5, name = "Set1"),pt.size=0.2) + ggtitle(paste0(filenames_df$patient[i],' ~ ',filenames_df$method[i])) + guides(shape='none') +
+    theme(legend.position = "none",axis.title = element_text(size = 8),axis.text =element_text(size = 8),
+          axis.ticks.x = element_blank(),
+          axis.ticks.y = element_blank(),
+          axis.text.x = element_blank(),
+          axis.text.y = element_blank())
+ 
+  plot_UMAP$labels$colour = 'Cell types (level1)' 
+  
+  plot_UMAPS[[i]] = plot_UMAP
+}
+  
+#save plots  
+  pdf(file.path(params$datapath,'../results/Figures_March2024/FigureS3.pdf'),width = 9,height = 10.5) 
+ (plot_UMAPS[[7]] + barplots_general[[7]] + plot_UMAPS[[9]] + barplots_general[[9]] + plot_layout(widths = c(10,1,10,1))) / 
+ (plot_UMAPS[[13]] + barplots_general[[13]] + plot_UMAPS[[15]] + barplots_general[[15]] + plot_layout(widths = c(10,1,10,1))) / 
+ (plot_UMAPS[[19]] + barplots_general[[19]] + plot_UMAPS[[21]] + barplots_general[[21]] + plot_layout(widths = c(10,1,10,1))) /
+ (plot_UMAPS[[1]] + barplots_general[[1]] + plot_UMAPS[[3]] + barplots_general[[3]] + plot_layout(widths = c(10,1,10,1)))
+  dev.off()
+
+   pdf(file.path(params$datapath,'../results/Figures_March2024/FigureS5.pdf'),width = 9,height = 10.5) 
+ (plot_UMAPS[[11]] + barplots_general[[11]] + plot_UMAPS[[10]] + barplots_general[[10]] + plot_layout(widths = c(10,1,10,1))) / 
+ (plot_UMAPS[[16]] + barplots_general[[16]] + plot_UMAPS[[18]] + barplots_general[[18]] + plot_layout(widths = c(10,1,10,1))) / 
+ (plot_UMAPS[[22]] + barplots_general[[22]] + plot_UMAPS[[24]] + barplots_general[[24]] + plot_layout(widths = c(10,1,10,1))) /
+ (plot_UMAPS[[4]] + barplots_general[[4]] + plot_UMAPS[[6]] + barplots_general[[6]] + plot_layout(widths = c(10,1,10,1)))
+  dev.off()
+
+
+```
+
 
 # feature plots
 * Feature plots avec les marqueurs EPCAM, CLDN5, COL1A2 et PTPRC pourraient aussi illustrer les grands compartiments Epithelial, Endothelial, Stromal et Immune (panels E, F, G, H).
@@ -164,7 +225,7 @@ for(i in 1:2)
 }
 
 #save plot as png (because a .pdf as a vectorized image is too big)
-png(file.path(params$datapath,'../results/Figures_Oct2023/Figure_S1.png'),width = 1560,height = 600)
+png(file.path(params$datapath,'../results/Figures_March2024/Figure_S2.png'),width = 1560,height = 600)
 ((fplots[[1]]|fplots[[2]]|fplots[[3]]|fplots[[4]]|fplots[[5]]) /
 (fplots[[6]]|fplots[[7]]|fplots[[8]]|fplots[[9]]|fplots[[10]])) + plot_annotation(tag_levels = 'A') + plot_layout(guides = 'collect')
 dev.off()

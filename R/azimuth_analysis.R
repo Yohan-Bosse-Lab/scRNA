@@ -260,14 +260,22 @@ ClusterPreservationScore <- function(query, ds.amount) {
 #relabel all unknowns as unclassified in a data.frame or seurat object.
 relabeler = function(seurat.data=data){
 
+  levels = c('predicted.ann_level_1','predicted.ann_level_2','predicted.ann_level_3','predicted.ann_level_5','predicted.ann_level_5','predicted.ann_finest_level')
+  
+  if(class(seurat.data) == 'Seurat') {
+    seurat.data@meta.data$predicted.ann_level_1[seurat.data@meta.data$predicted.ann_level_1 =='unknown'] = 'Unclassified'
+    seurat.data@meta.data$predicted.ann_level_2[seurat.data@meta.data$predicted.ann_level_2 =='unknown'] = 'Unclassified'
+    seurat.data@meta.data$predicted.ann_level_3[seurat.data@meta.data$predicted.ann_level_3 =='unknown'] = 'Unclassified'
+    seurat.data@meta.data$predicted.ann_level_4[seurat.data@meta.data$predicted.ann_level_4 =='unknown'] = 'Unclassified'
+    seurat.data@meta.data$predicted.ann_level_5[seurat.data@meta.data$predicted.ann_level_5 =='unknown'] = 'Unclassified'
+    seurat.data@meta.data$predicted.ann_finest_level[seurat.data@meta.data$predicted.ann_finest_level=='unknown'] = 'Unclassified'
+  }
+  
   
   if(class(seurat.data) == 'data.frame') {
-    seurat.data$predicted.ann_level_1[seurat.data$predicted.ann_level_1=='unknown'] = 'Unclassified'
-    seurat.data$predicted.ann_level_2[seurat.data$predicted.ann_level_2=='unknown'] = 'Unclassified'
-    seurat.data$predicted.ann_level_3[seurat.data$predicted.ann_level_3=='unknown'] = 'Unclassified'
-    seurat.data$predicted.ann_level_4[seurat.data$predicted.ann_level_4=='unknown'] = 'Unclassified'
-    seurat.data$predicted.ann_level_5[seurat.data$predicted.ann_level_5=='unknown'] = 'Unclassified'
-    seurat.data$predicted.ann_finest_level[seurat.data$predicted.ann_finest_level=='unknown'] = 'Unclassified'
+    for(i in c(1:6)[levels %in% colnames(seurat.data)]){
+      seurat.data[,colnames(seurat.data) == levels[i]][seurat.data[,colnames(seurat.data) == levels[i]] == 'unknown'] = 'Unclassified'
+    }
   }
   
   if(class(seurat.data) == 'list'){

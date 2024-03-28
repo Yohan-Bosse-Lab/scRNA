@@ -35,7 +35,6 @@ library(plotly)
 source('../R/doubletfinder.R')
 source('../R/azimuth_analysis.R')
 source('../R/infercnv.R')
-
 ```
 
 # Loading data  
@@ -150,27 +149,14 @@ saveRDS(seurat.objects, file = file.path(params$datapath,"adeno.24samples_27_07_
 ```
 
 
-# ADD the cnv data and save it again. 
+# ADD the ANNOTATION data and save it again. 
 ```{r annotation_cnv}
 seurat.objects = readRDS(file.path(params$datapath,"adeno.24samples_27_07_23.rds"))
 
 for(i in seq_along(filenames)){
-#for(i in c(3,23)){
   azimuth_out  = azimuth_annotation(seurat.objects[[i]],annotation_threshold = 0.5,v2=T)
   seurat.objects[[i]] = azimuth_out[[3]]
-    
-  #infercnv
-  infercnv_out = suppressMessages(infercnv_wrapper(seurat_obj = seurat.objects[[i]],
-                              quantile = 0.5, 
-                              out.dir = file.path(params$datapath,'infercnv/24samples/',filenames[i]),
-                              level = 'predicted.ann_level_1',
-                              reference_group = 'Immune',
-                              gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional')))
-  
-  seurat.objects[[i]] = infercnv_out[[1]]
-  
-  print(infercnv_out[[2]])
-  print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (ANNOTATION, CNV)'))
+  print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (ANNOTATION)'))
 }
   
 saveRDS(seurat.objects, file = file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
@@ -187,6 +173,57 @@ metadata$unique = paste(metadata$method,metadata$type,metadata$patient,sep = '__
 write.csv(metadata,file.path(params$datapath,"adeno.24samples_metadata.csv"))
 
 ```
+
+
+```{r infercnv}
+#seurat.objects = readRDS(file.path(params$datapath,"adeno.24samples_27_07_23CNV.rds"))
+
+metadata_infercnv = list()
+for(i in 1:12)
+{
+#per sample, per method NT combined:
+if(i ==1) samplesNT_cell = c(1:length(filenames))[regexpr('4........._all_',filenames)>0]
+if(i ==2) samplesNT_cell = c(1:length(filenames))[regexpr('6........._all_',filenames)>0]
+if(i ==3) samplesNT_cell = c(1:length(filenames))[regexpr('8........._all_',filenames)>0]
+if(i ==4) samplesNT_cell = c(1:length(filenames))[regexpr('10........._all_',filenames)>0]
+if(i ==5) samplesNT_cell = c(1:length(filenames))[regexpr('4........._SN_',filenames)>0]
+if(i ==6) samplesNT_cell = c(1:length(filenames))[regexpr('6........._SN_',filenames)>0]
+if(i ==7) samplesNT_cell = c(1:length(filenames))[regexpr('8........._SN_',filenames)>0]
+if(i ==8) samplesNT_cell = c(1:length(filenames))[regexpr('10........._SN_',filenames)>0]
+if(i ==9) samplesNT_cell = c(1:length(filenames))[regexpr('4........._depletion_',filenames)>0]
+if(i ==10) samplesNT_cell = c(1:length(filenames))[regexpr('6........._depletion_',filenames)>0]
+if(i ==11) samplesNT_cell = c(1:length(filenames))[regexpr('8........._depletion_',filenames)>0]
+if(i ==12) samplesNT_cell = c(1:length(filenames))[regexpr('10........._depletion_',filenames)>0]
+
+#per sample
+combinedNT = merge(seurat.objects[[samplesNT_cell[1]]],seurat.objects[samplesNT_cell[-1]])
+combinedNT = subset(combinedNT, subset = predicted.ann_level_1=='Epithelial')
+
+infercnv_out = suppressMessages(infercnv_wrapper(seurat_obj = combinedNT,
+                                                 quantile = 0.5,
+                                                 out.dir = file.path(params$datapath,'infercnv',paste0('combinedNT',i)),
+                                                 level = 'type',
+                                                 reference_group = 'Normal',
+                                                 gene_order_file = file.path(params$datapath,'gencode.v43.primary_assembly.annotation.positional')))
+
+metadata_infercnv[[i]] = infercnv_out[[1]]@meta.data
+
+#combine all results
+temp = metadata_infercnv[[i]][,colnames(metadata_infercnv[[i]]) %in% c('method','type','patient','predicted.ann_level_3','cnv_score','predicted.ann_level_3.score')]
+temp$pred  = paste0(temp$predicted.ann_level_3,'___',temp$type)
+if(i == 1) combinedNT_infercnv_summary = temp
+if(i >1)   combinedNT_infercnv_summary = rbind(combinedNT_infercnv_summary,temp)
+  
+print(paste0('------DONE: ',i, ', The time is: ',Sys.time()))
+  
+}
+
+#save up
+write.csv(combinedNT_infercnv_summary,file.path(params$datapath,'infercnv/combinedNT_infercnv_summary.csv'))
+```
+
+
+
 
 
 # DONE  

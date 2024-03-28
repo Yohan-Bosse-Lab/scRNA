@@ -27,13 +27,12 @@ library(DT) #data viz
 library(plotly)
 
 source('../R/azimuth_analysis.R')
-source('../R/infercnv.R')
 ```
 
 
 # Loading data  
 ```{r loading,message  = T}  
-#seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
 filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
 
 metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
@@ -233,7 +232,7 @@ for(i in 1:2){
 }}
  
 #save plots  
-  pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure3_UMAPs_CTA_normal24.pdf'),width = 12,height = 10.5) 
+  pdf(file.path(params$datapath,'../results/Figures_March2024/Figure3_UMAPs_CTA_normal24.pdf'),width = 12,height = 10.5) 
  (plot_SC + barplots_general[[1]] + plot_SN + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) / 
  (plot_UMAPS[[2]] + barplots[[2]] + plot_UMAPS[[4]] + (barplots[[4]] + guides(fill=guide_legend(ncol=2))) + plot_layout(widths = c(10,1,10,1)))  / (plot_UMAPS[[1]] + barplots[[1]] + plot_UMAPS[[3]] + (barplots[[3]] + guides(fill=guide_legend(ncol=2))) +plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = list(c('A','','B','','C','','D','','E','','F','')))
   dev.off()
@@ -355,7 +354,7 @@ cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + ge
 }
 
 #save plots
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure4_barplots_lambrechtsN24.pdf'),width = 11,height = 12) 
+pdf(file.path(params$datapath,'../results/Figures_March2024/Figure4_barplots_lambrechtsN24.pdf'),width = 11,height = 12) 
 (sc_sn_plots[[1]]/sc_sn_plots[[2]] ) + plot_annotation(tag_levels = 'A')
 dev.off()
 ```

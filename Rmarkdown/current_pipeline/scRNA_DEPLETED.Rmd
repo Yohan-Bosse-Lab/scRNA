@@ -27,14 +27,17 @@ library(ggplot2) #data viz
 library(DT) #data viz
 library(plotly)
 library(tidyr)
+library(factoextra)
+library(FactoMineR)
+ library(ggrepel)
 
 source('../R/azimuth_analysis.R')
-source('../R/infercnv.R')
 ```
 
 # Loading data  
 ```{r loading,message  = T}  
 seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+seurat.objects = relabeler(seurat.objects)
 filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
 
 metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
@@ -54,7 +57,7 @@ for(i in 1:2){
   if(i == 1) samples = c(1:length(filenames))[regexpr('CST-...._depletion_',filenames)>0]
   if(i == 2) samples = c(1:length(filenames))[regexpr('CTT-...._depletion_',filenames)>0]
  
-  combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
+  combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]])
 }
 saveRDS(combined_permethod,file.path(params$datapath,"combined_depletion_pertissue.rds"))
 } else combined_permethod = readRDS(file.path(params$datapath,'combined_depletion_pertissue.rds'))
@@ -100,19 +103,19 @@ plot_UMAPS = list()
 #percentage mitochondrial as a function of method and tissue type
 ```{r percentmt,message  = T,echo=T} 
 data_summarised = metadata_raw %>% group_by(method,type,samplename) %>% summarise(percent.mt = mean(percent.mt))
-p.mt_method_type = ggplot(metadata_raw, aes(x=method, y=percent.mt, fill=method)) +
+metadata_raw$method[metadata_raw$method=='immune depleted cells'] = 'Immune depleted\ncells'
+p_mt_method_type = ggplot(metadata_raw, aes(x=method, y=percent.mt, fill=method)) +
   geom_boxplot(position="dodge",outlier.shape = NA) +
-  ylab("Percentage of mitochondrial UMIs")  +
+  ylab("Percentage of mito-\nchondrial UMIs")  +
   facet_wrap(~type)+ylim(0,40)+
   theme_bw()+
+  xlab('') +
   theme(axis.text.x = element_blank(),legend.position = "right") 
 
 #anova for stats
 anova(lm(percent.mt~method*type+samplename, data = data_summarised))
 
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure_S4.pdf'),width = 6,height = 4) 
-p.mt_method_type
-dev.off()
+
 ```
 
 
@@ -122,11 +125,11 @@ dev.off()
 stress_references = read_xlsx(file.path(params$datapath,"512genes_OFlanagan_et_al2019.xlsx"))
 
 #prepare output df
-stress_genes = data.frame(gene = rownames(seurat.objects[[i]]@assays$RNA[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol,]))
+stress_genes = data.frame(gene = rownames(seurat.objects[[i]]@assays$RNA)[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol])
 
 for(i in 1:24){
   #stress_genesXcell is a matrix of stress genes X cells
-  stress_genesXcell  = seurat.objects[[i]]@assays$RNA[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol,]
+  stress_genesXcell  = seurat.objects[[i]]@assays$RNA$counts[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol,]
   temp2 = NULL
 
   for(j in 1:nrow(stress_genesXcell)){
@@ -155,6 +158,9 @@ stress_genes$patient[regexpr('^4',stress_genes$filenames)>0] = 'P4'
 stress_genes$patient[regexpr('^6',stress_genes$filenames)>0] = 'P6'
 stress_genes$patient[regexpr('^8',stress_genes$filenames)>0] = 'P8'
 stress_genes$patient[regexpr('^10',stress_genes$filenames)>0] = 'P10'
+stress_genes$site = 'LeftUpperLobe' 
+stress_genes$site[stress_genes$patient=='P8'] = 'RightUpperLobe'
+stress_genes$site[stress_genes$patient=='P10'] = 'RightUpperLobe'
 
 stress_genes$sqrt = stress_genes$value**0.5
 
@@ -193,12 +199,19 @@ p_patient = ggplot(stress_genes, aes(x=patient, y=value, fill=patient)) +
   geom_boxplot(position="dodge",outlier.shape = NA) +
   ylab('')
 
+p_site = ggplot(stress_genes, aes(x=site, y=value, fill=method)) +
+  geom_boxplot(position="dodge",outlier.shape = NA) +
+  facet_wrap(~type)+
+  ylab("fraction of cells expressing stress-related gene")
+
+
 p_method_type = ggplot(stress_genes, aes(x=method, y=value, fill=method)) +
   geom_boxplot(position="dodge",outlier.shape = NA) +
   ylab("fraction of cells expressing\na stress-related gene")  +
   facet_wrap(~type)+
   theme_bw() +
-  theme(axis.text.x = element_blank(),legend.position = "right") 
+  xlab('') +
+  theme(axis.text.x = element_blank(),legend.position = "none") 
 ```  
 
 # Cell types annotations summaries
@@ -354,18 +367,213 @@ cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + ge
 
 ```{r save plots, message= T}
 #save plots
-  pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure9_UMAPs_depletion24.pdf'),width = 12,height = 9) 
+  pdf(file.path(params$datapath,'../results/Figures_March2024/Figure10_UMAPs_depletion24.pdf'),width = 12,height = 9) 
  ((plot_depletion_N + barplots_general[[1]] + plot_depletion_T + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) / 
  
-  (sc_sn_plots[[1]]|sc_sn_plots[[2]] | p_method_type) + plot_layout(widths = c(10,10,2))) + plot_annotation(tag_levels = list(c('A','','B','','C','D','E')))
-          #                                                                                                                                     )
+  (sc_sn_plots[[1]]|sc_sn_plots[[2]] | ((p_method_type / p_mt_method_type)  +     plot_layout(guides = 'collect')        )      ) + plot_layout(widths = c(6,6))) + plot_annotation(tag_levels = list(c('A','','B','','C','D','E','F')))
+          #                                                                                                                                 )
   dev.off()
 ```
 
-# session info  
-```{r session, message= T}
+
+# PCA top5% most variable genes
+```{r pcas,message  = T}  
+combined_sub = merge(seurat.objects[[1]],seurat.objects[c(2:24)])
+
+# top 5percent most variables
+combined_agg_DF2  <- AggregateExpression(combined_sub, assays = "SCT", return.seurat = F, group.by = c("type",'method',"patient"))
+gexpr = as.data.frame(combined_agg_DF2$SCT)
+gexpr = log(gexpr+1,2)
+
+gexpr_sd = apply(gexpr,1,sd)
+
+#cutoffs
+cutoff = quantile(gexpr_sd,probs = seq(0,1,by = 0.05))[20]
+top5percent_variable = names(gexpr_sd)[gexpr_sd>=cutoff]
+seurat.objects.subsetted = list()
+
+#subset only the top 5% most variable
+for(i in 1:24){
+  seurat.objects.subsetted[[i]] = subset(seurat.objects[[i]],features = top5percent_variable)
+}
+
+#combine
+combined_raw = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)])
+combined = subset(combined_raw, subset = predicted.ann_level_1 != 'Unclassified')
+combined = subset(combined, subset = type != 'Tumor')
+
+combined_agg_DF = AggregateExpression(combined, assays = "SCT", return.seurat = F, group.by = c('method', "patient"))
+combined_agg_DF = data.frame(combined_agg_DF$SCT,check.names = F)
+
+
+#normalise by the number of cells
+number_of_cells = as.data.frame(table(combined@meta.data$method,combined@meta.data$patient))
+number_of_cells = number_of_cells[order(number_of_cells$Var1,number_of_cells$Var2),]
+combined_agg_DF = (apply(combined_agg_DF, 1, function(x) x/number_of_cells$Freq))
+
+#PCA
+pseudobulkRNAseq_pca = PCA(combined_agg_DF,scale = T, graph = F) #I just dont want the None category
+
+#samples DF
+data = as.data.frame(pseudobulkRNAseq_pca$ind$coord)
+rownames(data) = gsub('_4','_1',rownames(data))
+rownames(data) = gsub('_6','_2',rownames(data))
+rownames(data) = gsub('_8','_3',rownames(data))
+rownames(data) = gsub('_10','_4',rownames(data))
+data$Patients = sapply(strsplit(rownames(data), "_",fixed = T), "[",2)
+data$method = sapply(strsplit(rownames(data), "_",fixed = T), "[",1)
+data$`method X Patients` = rownames(data)
+
+
+#gene variable DF
+plot_depleted_all = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = `method X Patients` )) + 
+  geom_hline(yintercept=0,linetype="dashed") + 
+  geom_vline(xintercept=0,linetype="dashed") + 
+  geom_point(size = 6,color = 'black', shape=21,alpha =0.75)  + 
+  ylab('PC2') +
+  xlab('PC1') +
+  theme_bw() + 
+  scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")[c(4:1,8:11)],RColorBrewer::brewer.pal(n = 9, name = "Greens")[c(3,5,7,9)])  ) +
+  theme(legend.position = 'right') +
+  ggtitle('2,209 (top5%) most variable genes')
+```
+
+
+
+# PCA marker genes
+```{r pca marker genes, message= T}
 ###session
-sessionInfo()
+Immune = c('LCP1','CD53','PTPRC','COTL1','CXCR4','GMFG','FCER1G','LAPTM5','SRGN','CD52')
+Epithelial = c('KRT7','PIGR','ELF3','CYB5A','KRT8','KRT19','TACSTD2','MUC1','S100A14','CXCL17')
+Endothelial = c('PTRF','CLDN5','AQP1','PECAM1','NPDC1','VWF','GNG11','RAMP2','CLEC14A')
+Stroma = c('TPM2','DCN','MGP','SPARC','CALD1','LUM','TAGLN','IGFBP7','COL1A2','C1S','supetoto')
+
+features = unique(c(Immune,Epithelial,Endothelial,Stroma))
+
+seurat.objects.subsetted = list()
+
+for(i in 1:24){
+  seurat.objects.subsetted[[i]] = subset(seurat.objects[[i]],features = features)
+}
+
+#combine
+combined = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)])
+combined = subset(combined, subset = predicted.ann_level_1 != 'Unclassified')
+combined = subset(combined, subset = type != 'Tumor')
+combined@meta.data$method = gsub('immune','Immune',combined@meta.data$method)
+
+combined_agg_DF = AggregateExpression(combined, assays = "SCT", return.seurat = F, group.by = c('method', "patient","predicted.ann_level_1"))
+combined_agg_DF = data.frame(combined_agg_DF$SCT,check.names = F)
+
+# each 'cell' is a donor-condition-celltype pseudobulk profile
+combined_agg_DF = combined_agg_DF[,order(colnames(combined_agg_DF))]
+
+#normalise by the number of cells
+number_of_cells = as.data.frame(table(combined@meta.data$patient,combined@meta.data$predicted.ann_level_1,combined@meta.data$method))
+number_of_cells$type_method_level1 = paste(number_of_cells$Var3,number_of_cells$Var1,number_of_cells$Var2,sep = '_')
+number_of_cells = number_of_cells[order(number_of_cells$type_method_level1),]
+
+combined_agg_DF = (apply(combined_agg_DF, 1, function(x) x/number_of_cells$Freq))
+
+#PCA
+pseudobulkRNAseq_pca = PCA(combined_agg_DF,scale = T, graph = F) #I just dont want the None category
+
+#samples DF
+data = as.data.frame(pseudobulkRNAseq_pca$ind$coord)
+rownames(data) = gsub('_4','_1',rownames(data))
+rownames(data) = gsub('_6','_2',rownames(data))
+rownames(data) = gsub('_8','_3',rownames(data))
+rownames(data) = gsub('_10','_4',rownames(data))
+
+data$Patients = sapply(strsplit(rownames(data), "_",fixed = T), "[",2)
+#data$tissue = sapply(strsplit(rownames(data), "_",fixed = T), "[",1)
+data$method = sapply(strsplit(rownames(data), "_",fixed = T), "[",1)
+data$`cell types` = sapply(strsplit(rownames(data), "_",fixed = T), "[",3)
+
+p_tissuemethod = ggplot(data,aes(x= Dim.1,y=Dim.2,shape = method, fill = `cell types`)) +
+    geom_hline(yintercept=0,linetype="dashed") + 
+    geom_vline(xintercept=0,linetype="dashed") + 
+    geom_point(size = 4,alpha =0.75)  + 
+    ylab('PC2') +
+    xlab('PC1') +
+    scale_fill_manual(values = brewer.pal(n = 4, name = "Set1")) +
+    scale_color_manual(values = brewer.pal(n = 4, name = "Set1")) +
+    scale_shape_manual(values=c(21, 22, 24)) +
+    theme_bw() +
+    theme(legend.position = 'right') +
+    ggtitle('Cell type canonical markers (38 genes)')+
+    guides(fill = guide_legend(override.aes = list(shape= 21,fill = brewer.pal(n = 4, name = "Set1"))))
+```
+
+
+# PCA cell types
+```{r pca cell types, message= T}
+#PC with celltypes
+ct = as.data.frame(table(metadata$patient,metadata$type,metadata$method,metadata$predicted.ann_level_3))
+ct = ct[ct$Var4!= 'Unclassified',]
+ct = ct[ct$Var4!= 'Submucosal Secretory',]
+ct = ct[ct$Var2!= 'Tumor',]
+ct = ct[ct$Var4!='None', ]
+
+ct$names = paste0(ct$Var3,'_',ct$Var1)
+ct = tidyr::pivot_wider(ct,values_from= Freq,names_from = Var4)
+ct_normalised = as.data.frame(ct[,-c(1:4)])
+rownames(ct_normalised) = ct$names
+ct_normalised = t(ct_normalised)
+number_of_cells = colSums(ct_normalised)
+
+ct_normalised = (apply(ct_normalised, 1, function(x) x/number_of_cells))
+
+#PCA
+pseudobulkRNAseq_pca = PCA(ct_normalised,scale = T, graph = F) #I just dont want the None category
+data = as.data.frame(pseudobulkRNAseq_pca$ind$coord)
+rownames(data) = gsub('_4','_1',rownames(data))
+rownames(data) = gsub('_6','_2',rownames(data))
+rownames(data) = gsub('_8','_3',rownames(data))
+rownames(data) = gsub('_10','_4',rownames(data))
+data$`Method X sample` = rownames(data)
+
+#gene variable DF
+gene_variables = as.data.frame(pseudobulkRNAseq_pca$var)[,1:4]
+gene_variables$celltypes = rownames(gene_variables)
+
+#
+p_celltype  = ggplot() + 
+#    geom_segment(data =gene_variables,  aes(x = rep(0,21), y = rep(0,21), xend = coord.Dim.1*max(abs(data$Dim.1)), yend = coord.Dim.2*max(abs(data$Dim.2))), arrow = arrow(length = unit(0.2, "cm")), show.legend = T ) + 
+    geom_hline(yintercept=0,linetype="dashed") + geom_vline(xintercept=0, linetype="dashed") +
+#  geom_label_repel(data = gene_variables, aes(label = celltypes, x = coord.Dim.1*max(abs(data$Dim.1)), y = coord.Dim.2*max(abs(data$Dim.2))),size = 2) +
+  geom_point(data=data,aes(x= Dim.1,y=Dim.2, fill = `Method X sample`), size = 6,color = 'black', shape = 21,alpha =1) +
+  ylab('PC2') +
+  xlab('PC1') +
+  theme_bw() + 
+  scale_fill_manual(values = c(brewer.pal(n = 11, name = "RdYlBu")[c(4:1,8:11)],brewer.pal(n = 9, name = "Greens")[c(3,5,7,9)])  ) +
+  theme(legend.position = 'right') +
+  ggtitle('Cell types (level3)')
+#
+```
+
+
+```{r plots}
+
+pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_S10_depletedPCA.pdf'),width = 12,height = 8) 
+(plot_depleted_all+ p_celltype)  / ( p_tissuemethod+ plot_spacer()) + plot_annotation(tag_levels = 'A')
+dev.off()
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
 ```
 
 

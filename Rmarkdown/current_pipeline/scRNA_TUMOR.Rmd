@@ -26,7 +26,6 @@ library(DT) #data viz
 library(plotly)
 
 source('../R/azimuth_analysis.R')
-source('../R/infercnv.R')
 ```
 
 
@@ -68,8 +67,8 @@ for(k in 1:2){
   if(k == 1) samples = c(1:length(filenames))[regexpr('C.T-...._all_',filenames)>0]
   if(k == 2) samples = c(1:length(filenames))[regexpr('C.T-...._SN_',filenames)>0]
  
-  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
-  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = 'proj.umap')
+  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]])
+  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]])
   
   combined_normaltumor = relabeler(combined_normaltumor)
   
@@ -231,12 +230,12 @@ number_of_genes = ggplot(metadata_simplified, aes(nFeature_RNA,predicted.ann_lev
    theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),axis.text.y=element_blank(),
   strip.text.y = element_blank(),axis.title.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
 
-  sc_sn_plots[[i]] = fraction_per_patient|number_of_cells|number_of_genes|cnvMean
+  sc_sn_plots[[i]] = fraction_per_patient|number_of_cells|number_of_genes
 }
 
 #save plots
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure6_barplots_lambrechtsT24.pdf'),width = 14,height = 12) 
-(sc_sn_plots[[1]]/sc_sn_plots[[2]] ) + plot_annotation(tag_levels = 'A')
+pdf(file.path(params$datapath,'../results/Figures_March2024/Figure6_barplots_lambrechtsT24.pdf'),width = 14,height = 12) 
+(sc_sn_plots[[1]]/sc_sn_plots[[2]]) + plot_annotation(tag_levels = 'A')
 dev.off()
 ```
 

@@ -118,6 +118,32 @@ print(anova(lm(value~method*type*levels,mean_scores_temp)))
 ```
 
 
+```{r cnv_plots}
+#save up
+combinedNT_infercnv_summary  = read.csv(file.path(params$datapath,'infercnv/combinedNT_infercnv_summary.csv'),row.names = 1)
+
+combinedNT_infercnv_summary = combinedNT_infercnv_summary[combinedNT_infercnv_summary$predicted.ann_level_3 != 'Basal',]
+combinedNT_infercnv_summary = combinedNT_infercnv_summary[combinedNT_infercnv_summary$predicted.ann_level_3 != 'Submucosal Secretory',]
+combinedNT_infercnv_summary = combinedNT_infercnv_summary[combinedNT_infercnv_summary$type=='Tumor',]
+combinedNT_infercnv_summary$cnv_score_log = log(combinedNT_infercnv_summary$cnv_score,10)
+combinedNT_infercnv_summary = combinedNT_infercnv_summary[combinedNT_infercnv_summary$method!= 'immune depleted cells',]
+combinedNT_infercnv_summary$celltype = 'Epithelial'
+
+combinedNT_infercnv_summary = relabeler(combinedNT_infercnv_summary)
+
+#plots
+cnv_plot = ggplot(combinedNT_infercnv_summary, aes(y=cnv_score,x=predicted.ann_level_3,fill = method)) + 
+  geom_boxplot() + ylim(0,0.025) +
+  facet_wrap(.~celltype) +
+  scale_fill_manual(values = hue_pal()(3)[c(1,3)]) + 
+  xlab('') +
+  ylab('') +
+  ggtitle('CNV score (Tumor)') + 
+  theme_bw() +
+  theme(strip.background = element_rect(fill="lightgray",color= 'lightgray'),legend.position='none',axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) 
+```
+
+
 # Tumor - normal lineplots
 ```{r lineplots}
 #just make sure you have all the categories...: check with line below:
@@ -188,8 +214,8 @@ lineplots <- ggplot(data_summarised_fraction, aes(x=type, y=fraction, group=meth
   theme(strip.background = element_rect(fill="lightgray",colour = 'lightgray'),strip.text.x = element_text(size = 8,margin=margin()),legend.position='bottom')
 
 #save plot  
-pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure8_cells24.pdf')),width = 12,height = 8)
- ((tumor_normal_transition + lineplots) / guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
+pdf(file.path(params$datapath,paste0('../results/Figures_March2024/Figure7_cells24.pdf')),width = 18,height = 8)
+ (((tumor_normal_transition | lineplots | cnv_plot) + plot_layout(width= c(7,6,5))) / guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
 dev.off()
 ```
 
@@ -247,21 +273,17 @@ dev.off()
 
 
 ```{r cnv annotation correlation, echo=FALSE}
-metadata_subset = metadata[metadata$method!='immune depleted cells',]
-metadata_subset = metadata_subset[metadata_subset$type!='Normal',]
-metadata_subset$cnv_score_log = log(metadata_subset$cnv_score,10)
-
-cnv_annot_corplot = ggplot(data = metadata_subset, aes(y= cnv_score,x = predicted.ann_level_3.score)) +
+cnv_annot_corplot = ggplot(data = combinedNT_infercnv_summary, aes(y= cnv_score,x = predicted.ann_level_3.score)) +
   scale_y_continuous(trans= 'log10') +
   facet_grid(.~method) +
-  geom_hex(bins = 50) + 
+  geom_hex(bins = 25) + 
   geom_smooth(method = 'lm',span =0.1,col = 'deeppink') +
   ylab('CNV score (log10)') +
   xlab('level 3 annotation score') +
   theme_bw()
 
 #save plot    
-pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure_S3.pdf')),width = 8,height = 4)
+pdf(file.path(params$datapath,paste0('../results/Figures_March2024/Figure_S7.pdf')),width = 8,height = 4)
 cnv_annot_corplot
 dev.off()
 ```
@@ -327,7 +349,7 @@ sil_plot = ggplot(silhouettes_anova, aes(x=method, y=sil_width, fill=method)) +
   theme(axis.text.x = element_blank(),legend.position = "right") 
 
 #save plot  
-pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure_S2.pdf'),width = 6,height = 4) 
+pdf(file.path(params$datapath,'../results/Figures_March2024/Figure_S6.pdf'),width = 6,height = 4) 
 sil_plot
 dev.off()
 ```
@@ -382,7 +404,7 @@ table$immune.depleted.cells[is.na(table$immune.depleted.cells)] = 0
 table = table[-62,]
 
 #save table
-write.csv(table,file.path(params$datapath,'../results/Figures_Oct2023/annotation_table_finest.csv'),row.names = F)
+write.csv(table,file.path(params$datapath,'../results/Figures_March2024/annotation_table_finest.csv'),row.names = F)
 ```
 
 
@@ -654,7 +676,7 @@ hlca$Unclassified$annotlevel = '1'
 #print(hlca$Stroma,'Cell_Normal','depleted_Normal','Nucleus_Normal','Cell_Tumor','depleted_Tumor','Nucleus_Tumor','annotlevel','finest',limit =500)
 
 #save the table
-write.table(print(hlca,'Cell_Normal','Nucleus_Normal','depleted_Normal','Cell_Tumor','Nucleus_Tumor','depleted_Tumor','annotlevel','finest',limit =500),file.path(params$datapath,'../results/Figures_Oct2023/hierarchy_annotation.csv'),row.names = F,quote=F,sep=',')
+write.table(print(hlca,'Cell_Normal','Nucleus_Normal','depleted_Normal','Cell_Tumor','Nucleus_Tumor','depleted_Tumor','annotlevel','finest',limit =500),file.path(params$datapath,'../results/Figures_March2024/hierarchy_annotation.csv'),row.names = F,quote=F,sep=',')
 ```
 
 
