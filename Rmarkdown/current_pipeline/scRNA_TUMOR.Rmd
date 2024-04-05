@@ -67,8 +67,8 @@ for(k in 1:2){
   if(k == 1) samples = c(1:length(filenames))[regexpr('C.T-...._all_',filenames)>0]
   if(k == 2) samples = c(1:length(filenames))[regexpr('C.T-...._SN_',filenames)>0]
  
-  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]])
-  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]])
+  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = T)
+  combined_normaltumor[[k]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = T)
   
   combined_normaltumor = relabeler(combined_normaltumor)
   
@@ -107,8 +107,8 @@ table(metadata$method[metadata$predicted.ann_level_1=='Epithelial' & metadata$ty
 
 # plots
 ```{r plots}
- pdf(file.path(params$datapath,'../results/Figures_Oct2023/Figure5_UMAPs_CTA_tumor24.pdf'),width = 12,height = 4.5) 
- (dimplots[[1]] + barplots_general[[1]] + dimplots[[2]] + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = list(c('A','','B')))
+ pdf(file.path(params$datapath,'../results/Figures_March2024/Figure5_UMAPs_CTA_tumor24.pdf'),width = 12,height = 4.5) 
+ (dimplots[[1]] + barplots_general[[1]] + dimplots[[2]] + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = list(c('A','','B'))) & theme(plot.tag = element_text(face = 'plain'))
 dev.off()
 ```
 

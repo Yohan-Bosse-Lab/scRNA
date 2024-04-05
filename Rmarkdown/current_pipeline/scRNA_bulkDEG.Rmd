@@ -1,0 +1,558 @@
+---
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+# Setup  
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+```{r, requirements}
+library(Seurat) #scRNA analyses
+library(sctransform) #data normalization
+library(RColorBrewer)
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(DT) #data viz
+library(plotly)
+library(gridExtra)
+library(factoextra)
+library(FactoMineR)
+library(topGO)
+
+source('../R/azimuth_analysis.R')
+source('../R/infercnv.R')
+```
+
+
+# Loading data  
+```{r loading,message  = T}  
+seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+
+metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
+metadata = relabeler(metadata)
+```
+
+
+```{r merge subset}
+seurat.objects = relabeler(seurat.objects)
+
+combined_all_genes = merge(seurat.objects[[1]],seurat.objects[c(2:24)])
+
+#combined_sub = combined_all_genes
+
+combined_sub = subset(combined_all_genes, subset = method %in%  c('Cell','Nucleus'))
+```
+
+
+```{r pseudobulk}
+# pseudobulk the counts based on donor-condition-celltype
+combined_agg  <- AggregateExpression(combined_sub, assays = "SCT", return.seurat = T, group.by = c("type",'method', "patient", "predicted.ann_level_1"))
+combined_agg_DF  <- AggregateExpression(combined_sub, assays = "SCT", return.seurat = F, group.by = c("type",'method', "patient", "predicted.ann_level_1"))
+
+
+# each 'cell' is a donor-condition-celltype pseudobulk profile
+combined_agg$method_level1 <- paste(combined_agg$method,combined_agg$predicted.ann_level_1, sep = "_")
+combined_agg$type_level1 <- paste(combined_agg$type,combined_agg$predicted.ann_level_1, sep = "_")
+combined_agg$type_method_level1 <- paste(combined_agg$type,combined_agg$method,combined_agg$predicted.ann_level_1, sep = "_")
+ 
+celltypes = c('Endothelial','Epithelial','Immune','Stroma')
+bulk_final = list()
+go_final = list()
+for(x in 1:4)
+  {
+  bulk = list()
+  allRes = list()
+  bulk[[1]] <- FindMarkers(object = combined_agg, 
+                         ident.1 = paste0("Normal_Cell_",celltypes[x]), 
+                         ident.2 = paste0("Normal_Nucleus_",celltypes[x]),
+                         group.by = "type_method_level1",
+                         test.use = "DESeq2")
+
+  bulk[[2]] <- FindMarkers(object = combined_agg, 
+                         ident.1 = paste0("Tumor_Cell_",celltypes[x]),
+                         ident.2 = paste0("Tumor_Nucleus_",celltypes[x]),
+                         group.by = "type_method_level1",
+                         test.use = "DESeq2")
+
+  bulk[[3]] <- FindMarkers(object = combined_agg, 
+                         ident.1 = paste0("Normal_Cell_",celltypes[x]),
+                         ident.2 = paste0("Tumor_Cell_",celltypes[x]),
+                         group.by = "type_method_level1",
+                         test.use = "DESeq2")
+
+  bulk[[4]] <- FindMarkers(object = combined_agg, 
+                         ident.1 = paste0("Normal_Nucleus_",celltypes[x]), 
+                         ident.2 = paste0("Tumor_Nucleus_",celltypes[x]),
+                         group.by = "type_method_level1",
+                         test.use = "DESeq2")
+
+#
+bulk[[1]]$comparison = 'Normal_Cell / Normal_Nucleus'
+bulk[[2]]$comparison = 'Tumor_Cell / Tumor_Nucleus'
+bulk[[3]]$comparison = 'Normal_Cell / Tumor_Cell'
+bulk[[4]]$comparison = 'Normal_Nucleus / Tumor_Nucleus'
+
+bulk[[1]]$celltype = celltypes[x]
+bulk[[2]]$celltype = celltypes[x]
+bulk[[3]]$celltype = celltypes[x]
+bulk[[4]]$celltype = celltypes[x]
+
+bulk[[1]]$genes = rownames(bulk[[1]])
+bulk[[2]]$genes = rownames(bulk[[2]])
+bulk[[3]]$genes = rownames(bulk[[3]])
+bulk[[4]]$genes = rownames(bulk[[4]])
+
+bulk[[1]]$signif = 'NO';bulk[[1]]$signif[bulk[[1]]$p_val_adj<0.05] = 'YES'
+bulk[[2]]$signif = 'NO';bulk[[2]]$signif[bulk[[2]]$p_val_adj<0.05] = 'YES'
+bulk[[3]]$signif = 'NO';bulk[[3]]$signif[bulk[[3]]$p_val_adj<0.05] = 'YES'
+bulk[[4]]$signif = 'NO';bulk[[4]]$signif[bulk[[4]]$p_val_adj<0.05] = 'YES'
+
+bulk[[1]]$p_val_adj_log = -log(bulk[[1]]$p_val_adj,10)
+bulk[[2]]$p_val_adj_log = -log(bulk[[2]]$p_val_adj,10)
+bulk[[3]]$p_val_adj_log = -log(bulk[[3]]$p_val_adj,10)
+bulk[[4]]$p_val_adj_log = -log(bulk[[4]]$p_val_adj,10)
+
+bulk_final[[x]] = rbind(bulk[[1]],bulk[[2]],bulk[[3]],bulk[[4]])
+
+#############################
+### GENE ONTOLOGY bp TEST ###
+#############################
+
+topFUN = function(x=gene_list){y = rep(TRUE,length(x));y[x==1]=FALSE;names(y) = names(x);return(y)}
+comparison = c('Normal_Cell / Normal_Nucleus','Tumor_Cell / Tumor_Nucleus','Normal_Cell / Tumor_Cell','Normal_Nucleus / Tumor_Nucleus')
+
+for(i in 1:4){
+  gene_list = bulk[[i]]$signif
+  gene_list[gene_list=='NO'] = 1
+  gene_list[gene_list=='YES'] = 0
+  gene_list = as.numeric(gene_list)
+  names(gene_list) = bulk[[i]]$genes
+
+  GOdata <- new("topGOdata",
+              ontology = "BP",
+              allGenes = gene_list,
+              geneSel = topFUN,
+              description = "GO analysis of DEGs",
+              annot = annFUN.org,mapping = "org.Hs.eg.db",ID = 'symbol')
+
+  resultFis <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+
+  allRes[[i]] <- GenTable(GOdata, resultFis, topNodes = 10)
+  allRes[[i]]$comparison = comparison[i]
+  allRes[[i]]$celltype = celltypes[x]
+  }
+  temp = rbind(allRes[[1]],allRes[[2]],allRes[[3]],allRes[[4]])
+  go_final[[x]] = temp
+  go_final[[x]]$oe = round(go_final[[x]]$Significant/go_final[[x]]$Expected,2)
+  print(paste0('Done ', celltypes[x], ', The time is: ',Sys.time()))
+}
+
+#
+
+
+bulk_final_summary = data.frame(celltype = rep(celltypes,2), comparison = c(rep('Cell vs. Nucleus',4),rep('Normal vs. Tumor',4)),A = c(rep('Normal',4),rep('Cell',4)), `DEG (A)` = 0, `up (A)` = 0,`down (A)` = 0,` ` = '         ', B = c(rep('Tumor',4),rep('Nucleus',4)),`DEG (B)` = 0,`up (B)`= 0,`down (B)` = 0,commonAB = 0,expectedAB=0,check.names = F)
+
+rownames(bulk_final_summary) = c(bulk_final_summary$celltype[1:4],paste0(bulk_final_summary$celltype[1:4],' '))
+
+#c is for the cell types.
+for(c in 1:4)
+{
+  tempA = bulk_final[[c]][bulk_final[[c]]$comparison == 'Normal_Cell / Normal_Nucleus',]
+  tempB = bulk_final[[c]][bulk_final[[c]]$comparison == 'Tumor_Cell / Tumor_Nucleus',]
+  
+  bulk_final_summary$`DEG (A)`[c] = length(tempA$signif[tempA$signif =='YES'])
+  bulk_final_summary$`DEG (B)`[c] = length(tempB$signif[tempB$signif =='YES'])
+
+  bulk_final_summary$`up (A)`[c] = length(tempA$signif[tempA$signif=='YES' & tempA$avg_log2FC > 0])
+  bulk_final_summary$`up (B)`[c] = length(tempB$signif[tempB$signif=='YES' & tempB$avg_log2FC > 0])
+  
+  bulk_final_summary$`down (A)`[c] = length(tempA$signif[tempA$signif=='YES' & tempA$avg_log2FC < 0])
+  bulk_final_summary$`down (B)`[c] = length(tempB$signif[tempB$signif=='YES' & tempB$avg_log2FC < 0])
+  
+  bulk_final_summary$commonAB[c] = length(intersect(tempA$genes[tempA$signif =='YES'],tempB$genes[tempB$signif =='YES']))
+  bulk_final_summary$expectedAB[c] =  round((length(tempA$signif[tempA$signif =='YES'])  /nrow(tempA)) * ( length(tempB$signif[tempB$signif =='YES']) /nrow(tempB)) *  nrow(merge(tempA,tempB,by = 'genes')))
+    
+    
+    
+  #
+  tempA = bulk_final[[c]][bulk_final[[c]]$comparison == 'Normal_Cell / Tumor_Cell',]
+  tempB = bulk_final[[c]][bulk_final[[c]]$comparison == 'Normal_Nucleus / Tumor_Nucleus',]
+  
+  bulk_final_summary$`DEG (A)`[c+4] = length(tempA$signif[tempA$signif =='YES'])
+  bulk_final_summary$`DEG (B)`[c+4] = length(tempB$signif[tempB$signif =='YES'])
+  
+  bulk_final_summary$`up (A)`[c+4] = length(tempA$signif[tempA$signif=='YES' & tempA$avg_log2FC > 0])
+  bulk_final_summary$`up (B)`[c+4] = length(tempB$signif[tempB$signif=='YES' & tempB$avg_log2FC > 0])
+  
+  bulk_final_summary$`down (A)`[c+4] = length(tempA$signif[tempA$signif=='YES' & tempA$avg_log2FC < 0])
+  bulk_final_summary$`down (B)`[c+4] = length(tempB$signif[tempB$signif=='YES' & tempB$avg_log2FC < 0])
+
+  bulk_final_summary$commonAB[c+4] = length(intersect(tempA$genes[tempA$signif =='YES'],tempB$genes[tempB$signif =='YES']))
+  
+  bulk_final_summary$expectedAB[c+4] =  round((length(tempA$signif[tempA$signif =='YES'])  /nrow(tempA)) * ( length(tempB$signif[tempB$signif =='YES']) /nrow(tempB)) *  nrow(merge(tempA,tempB,by = 'genes')))
+  
+  
+}
+
+#bulk_final_summary_final = bulk_final_summary[,-c(1,8)]
+bulk_final_summary_final = rbind(bulk_final_summary[1:4,],rep('',13),bulk_final_summary[5:8,])
+rownames(bulk_final_summary_final) = c(bulk_final_summary$celltype[1:4],'',paste0(bulk_final_summary$celltype[1:4],' '))
+
+volcano_plots = list()
+for(i in 1:4){
+
+bulk_final[[i]]$comparison =  factor(bulk_final[[i]]$comparison,levels = c('Normal_Cell / Normal_Nucleus','Tumor_Cell / Tumor_Nucleus','Normal_Cell / Tumor_Cell','Normal_Nucleus / Tumor_Nucleus'))
+
+ys = data.frame(y1=c(60,30,10,12),y2=c(135,60,19.5,55),y3=c(250,45,14,30),y4=c(93,60,10.5,22))
+xs = data.frame(xup=c(4.5,4.5,7.5,4),xdown=c(-3.5,-3.5,-3.5,-3.5))
+
+labels_UP = data.frame(comparison = unique(bulk_final[[i]]$comparison), label = paste0('UP = ',c(bulk_final_summary_final[i,c(5,10)],bulk_final_summary_final[(i+5),c(5,10)])),x = 4.5,y = ys[,i])
+
+
+labels_DOWN = data.frame(comparison = unique(bulk_final[[i]]$comparison), label = paste0('DOWN = ',c(bulk_final_summary_final[i,c(6,11)],bulk_final_summary_final[(i+5),c(6,11)])),x = -3.5,y =  ys[,i])
+
+
+volcano_plots[[i]] = ggplot(bulk_final[[i]], aes(x = avg_log2FC, y = p_val_adj_log, color = signif)) +
+  geom_point() +
+  facet_wrap(.~comparison,nrow =2,scales='free_y') + 
+  ggtitle(paste0(celltypes[i],' cells ~ DEGs')) + 
+  geom_label(aes(x=x,y=y,label = label), labels_UP,col = 'black',size = 3) +
+  geom_label(aes(x=x,y=y,label = label), labels_DOWN,col = 'black',size = 3) +
+  ylab('-log10(adjusted p-value)') +
+  xlab('-log2(Fold Change)') +
+  xlim(c(-6,6))+
+  theme_bw() + 
+  theme(legend.position = 'none',strip.text = element_text(size=10))
+}
+```
+
+```{r save DEGs and GOs}
+#restructure results
+degs_signif = list(rbind(bulk_final[[1]],bulk_final[[2]],bulk_final[[3]],bulk_final[[4]])) 
+degs_signif[[1]] = degs_signif[[1]][!is.na(degs_signif[[1]]$p_val_adj),]
+degs_signif[[1]] = degs_signif[[1]][degs_signif[[1]]$p_val_adj<0.05,]
+degs_signif[[1]] = degs_signif[[1]][,c(6,7,8,2,5),]
+
+degs_signif[[2]] = degs_signif[[1]];degs_signif[[2]] = degs_signif[[2]][degs_signif[[2]]$comparison == 'Tumor_Cell / Tumor_Nucleus', ]
+degs_signif[[3]] = degs_signif[[1]];degs_signif[[3]] = degs_signif[[3]][degs_signif[[3]]$comparison == 'Normal_Cell / Tumor_Cell', ]
+degs_signif[[4]] = degs_signif[[1]];degs_signif[[4]] = degs_signif[[4]][degs_signif[[4]]$comparison == 'Normal_Nucleus / Tumor_Nucleus', ]
+degs_signif[[1]] = degs_signif[[1]][degs_signif[[1]]$comparison == 'Normal_Cell / Normal_Nucleus', ]
+
+write.csv(degs_signif[[1]],file.path(params$datapath,'../results/Figures_March2024/degs_signif___Normal_Cell_Normal_Nucleus.csv'),row.names = F)
+write.csv(degs_signif[[2]],file.path(params$datapath,'../results/Figures_March2024/degs_signif___Tumor_Cell_Tumor_Nucleus.csv'),row.names = F)
+write.csv(degs_signif[[3]],file.path(params$datapath,'../results/Figures_March2024/degs_signif___Normal_Cell_Tumor_Cell.csv'),row.names = F)
+write.csv(degs_signif[[4]],file.path(params$datapath,'../results/Figures_March2024/degs_signif___Normal_Nucleus_Tumor_Nucleus.csv'),row.names = F)
+
+
+#GOs 
+go = rbind(go_final[[1]],
+                go_final[[2]],
+                go_final[[3]],
+                go_final[[4]])
+
+go = go[,c(7,8,1,2,3,4,5,9,6)]
+colnames(go)[9] = 'p_val'
+colnames(go)[8] = 'Odds-ratio'
+
+#
+write.csv(go,file.path(params$datapath,'../results/Figures_March2024/go_signif.csv'),row.names = F)
+
+```
+
+
+
+
+```{r goPLOTS}
+go_final[[2]]$comparison =  factor(go_final[[2]]$comparison,levels = c('Normal_Cell / Normal_Nucleus','Tumor_Cell / Tumor_Nucleus','Normal_Cell / Tumor_Cell','Normal_Nucleus / Tumor_Nucleus'))
+
+go_final[[2]][25,2] = 'regulation of cell pop prolif..'
+go_final[[2]][31,2] = 'anatomical struct. develop'
+go_final[[2]][32,2] = 'multicell. organism. process'
+
+go_plot = ggplot(data = go_final[[2]][c(1:5,11:15,21:25,31:35),],aes(y = Term, x = Annotated, fill= Term)) + 
+  geom_bar(stat="identity") +
+  facet_wrap(.~comparison,ncol = 1,scales = "free_y") +
+  ylab('top 5 significant GO terms (BP)') +
+  xlab('Number of Genes') +
+  scale_fill_manual('top5 significantly enriched GO terms',values = c('gray80',RColorBrewer::brewer.pal(n = 12, name = "Paired"),'yellow','black')) + 
+  theme_bw() + 
+  theme(legend.position = 'none') +
+  ggtitle('Gene Ontology enrichment analysis ~ Epithelial cells')
+
+
+
+
+```
+
+
+```{r dendrogram correlation}
+library(ggdendro)
+library(dendextend)
+combined_agg_DF2  <- AggregateExpression(combined_sub, assays = "SCT", return.seurat = F, group.by = c("type",'method',"patient"))
+combined_agg_DF3  <- AggregateExpression(combined_sub, assays = "SCT", return.seurat = F, group.by = c("type",'method'))
+
+gexpr = as.data.frame(combined_agg_DF2$SCT)
+gexpr = gexpr+1
+gexpr = log(gexpr,2)
+#gexpr_cor = cor(gexpr[-c(5,10,15,20)])
+
+colnames(gexpr) = gsub('_4','_p1',colnames(gexpr))
+colnames(gexpr) = gsub('_6','_p2',colnames(gexpr))
+colnames(gexpr) = gsub('_8','_p3',colnames(gexpr))
+colnames(gexpr) = gsub('_10','_p4',colnames(gexpr))
+
+gexpr_sd = apply(gexpr,1,sd)
+cutoff = quantile(gexpr_sd,probs = seq(0,1,by = 0.05))[20]
+
+
+hc = hclust(dist(t(gexpr[gexpr_sd>=cutoff,])), "ward.D")
+dend <- as.dendrogram(hc)
+ddata_x <- dendro_data(dend)
+ddata_x$segments$yend = ddata_x$segments$yend/14
+ddata_x$segments$y = ddata_x$segments$y/14
+#dend %>% dendextend::set("branches_k_color", k = 2) %>% 
+#  plot(main = "Dendrogram",horiz = T)
+
+labs <- label(ddata_x)
+labs$group <- sapply(strsplit(labs$label, "_",fixed = T), "[",2)
+#
+dendro_plot <- ggplot(segment(ddata_x)) +
+     geom_segment(aes(x=-y, y=x, xend=-yend, yend=xend)) +
+     geom_text(data=label(ddata_x),nudge_x = 5,hjust = 0,
+               aes(label=label, x=0, y=x, colour=labs$group), fontface = "bold") +
+  xlim(-70,125) +
+  theme_void() +
+  scale_color_manual(values = scales::hue_pal()(3)[c(1,3)]) +
+  theme(legend.position = 'none') 
+  
+
+#corplot
+gexpr = as.data.frame(combined_agg_DF3$SCT)
+gexpr = gexpr+1
+gexpr = log(gexpr,2)
+#gexpr_cor = cor(gexpr)
+
+
+gexpr$c1 = 'Normal_Cell / Normal_Nucleus'
+gexpr$c2 = 'Tumor_Cell / Tumor_Nucleus'
+gexpr$c3 = 'Normal_Cell / Tumor_Cell'
+gexpr$c4 = 'Normal_Nucleus / Tumor_Nucleus'
+
+
+a = gexpr[,c(1,2,5)]; colnames(a) = c('x','y','comparison') ; a = a[a$x!='-Inf',]; a = a[a$y!='-Inf',]
+b = gexpr[,c(3,4,6)]; colnames(b) = c('x','y','comparison') ; b = b[b$x!='-Inf',]; b = b[b$y!='-Inf',]
+c = gexpr[,c(1,3,7)]; colnames(c) = c('x','y','comparison') ; c = c[c$x!='-Inf',]; c = c[c$y!='-Inf',]
+d = gexpr[,c(2,4,8)]; colnames(d) = c('x','y','comparison') ; d = d[d$x!='-Inf',]; d = d[d$y!='-Inf',]
+gexpr_pivoted = rbind(a, b,c,d)
+labels = data.frame(comparison = unique(gexpr_pivoted$comparison), label = paste0('r = ',round(c(cor(a$x,a$y),cor(b$x,b$y),cor(c$x,c$y),cor(d$x,d$y)),2)))
+
+#''Normal_Cell/Normal_Nucleus','Tumor_Cell/Tumor_Nucleus','Normal_Cell/Tumor_Cell','Normal_Nucleus/Tumor_Nucleus'))
+plot_correl = ggplot(data = gexpr_pivoted, aes(x = x, y = y,color = comparison)) + 
+  geom_point(alpha = 0.05) +
+  geom_smooth(method='lm',color = 'black', linewidth= 2) +
+  facet_wrap(.~comparison,nrow=2) +
+  geom_text(x = 5, y = 18, aes(label = label), labels,col = 'black') +
+  ylim(c(0,20)) +
+  xlab('log2 (gene expression)') +
+  ylab('log2 (gene expression)') + 
+  scale_color_manual(values = c('darkorange','darkblue','darkred','darkgreen')) +
+  theme_bw() + 
+  theme(legend.position = 'none',strip.text = element_text(size=10))
+
+
+
+
+
+#pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_gexpr_cor.pdf'),width = 15,height = 8) 
+#corrplot(gexpr_cor,type = 'upper',order = 'hclust',col.lim = c(0.75,1),col = RColorBrewer::brewer.pal(name = 'Purples',n =9),is.corr =F,addrect=1, rect.col= 'black', tl.col = "black",method = 'number')
+
+#corrRect(p, name = c("Normal_Cell_Immune","Tumor_Nucleus_Epithelial",'Normal_Nucleus_Stroma'))
+#dev.off()
+
+
+#
+table = bulk_final_summary_final[,c(2,3,8,12,13)]
+colnames(table)[4:5] = c('DEGs common\n(observed)\nin A and B','DEGs common\n(expected)\nin A and B')
+
+pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_8_degs.pdf'),width = 16,height = 10) 
+#corrplot(gexpr_cor,type = 'upper',order = 'hclust',col.lim = c(0.75,1),col = RColorBrewer::brewer.pal(name = 'Purples',n =9),is.corr =F,addrect=1, rect.col= 'black', tl.col = "black",method = 'number') + 
+(
+  ((plot_correl | dendro_plot | volcano_plots[[2]] )  + plot_layout(widths=c(6,3,7) ))  /
+  ((wrap_elements(tableGrob(table))|plot_spacer()|go_plot)             + plot_layout(widths=c(8,2,6) ))
+)  + plot_annotation(tag_levels = 'A')
+ dev.off() 
+
+pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_S8_degs.pdf'),width = 6,height = 12) 
+#corrplot(gexpr_cor,type = 'upper',order = 'hclust',col.lim = c(0.75,1),col = RColorBrewer::brewer.pal(name = 'Purples',n =9),is.corr =F,addrect=1, rect.col= 'black', tl.col = "black",method = 'number') + 
+(volcano_plots[[1]] / volcano_plots[[3]] / volcano_plots[[4]])  + plot_annotation(tag_levels = 'A')
+ dev.off() 
+
+```
+
+
+
+```{r pca}
+Immune = c('LCP1','CD53','PTPRC','COTL1','CXCR4','GMFG','FCER1G','LAPTM5','SRGN','CD52')
+Epithelial = c('KRT7','PIGR','ELF3','CYB5A','KRT8','KRT19','TACSTD2','MUC1','S100A14','CXCL17')
+Endothelial = c('PTRF','CLDN5','AQP1','PECAM1','NPDC1','VWF','GNG11','RAMP2','CLEC14A')
+Stroma = c('TPM2','DCN','MGP','SPARC','CALD1','LUM','TAGLN','IGFBP7','COL1A2','C1S')
+#features = c('EPCAM', 'CLDN5', 'COL1A2','PTPRC')
+random100 = sample(seurat.objects[[1]]@assays$refAssay@data@Dimnames[[1]],500)
+  
+#all_features = unique(c(Immune,Epithelial,Endothelial,Stroma,features,random100))
+all_features = unique(c(Immune,Epithelial,Endothelial,Stroma))#,random100))
+
+#all_features = unique(random100)
+
+seurat.objects.subsetted = list()
+
+for(i in 1:24){
+  seurat.objects.subsetted[[i]] = subset(seurat.objects[[i]],features = all_features)
+}
+
+#combine
+combined = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)])
+combined = relabeler(combined)
+combined = subset(combined, subset = method %in%  c('Cell','Nucleus'))
+combined = subset(combined, subset = predicted.ann_level_1 != 'Unclassified')
+
+combined_agg  = AggregateExpression(combined, assays = "SCT", return.seurat = T, group.by = c("type",'method', "patient", "predicted.ann_level_1"))
+combined_agg_DF = AggregateExpression(combined, assays = "SCT", return.seurat = F, group.by = c("type",'method', "patient", "predicted.ann_level_1"))
+combined_agg_DF = data.frame(combined_agg_DF$SCT)
+
+# each 'cell' is a donor-condition-celltype pseudobulk profile
+combined_agg$method_level1 <- paste(combined_agg$method,combined_agg$predicted.ann_level_1, sep = "_")
+combined_agg$type_level1 <- paste(combined_agg$type,combined_agg$predicted.ann_level_1, sep = "_")
+combined_agg$type_method_level1 <- paste(combined_agg$type,combined_agg$method,combined_agg$predicted.ann_level_1, sep = "_")
+combined_agg_DF = combined_agg_DF[,order(colnames(combined_agg_DF))]
+
+#normalise by the number of cells
+number_of_cells = as.data.frame(table(combined@meta.data$patient,combined@meta.data$predicted.ann_level_1,combined@meta.data$method,combined@meta.data$type))
+number_of_cells$type_method_level1 = paste(number_of_cells$Var4,number_of_cells$Var3,number_of_cells$Var1,number_of_cells$Var2,sep = '_')
+number_of_cells = number_of_cells[order(number_of_cells$type_method_level1),]
+
+combined_agg_DF = (apply(combined_agg_DF, 1, function(x) x/number_of_cells$Freq))
+
+#PCA
+pseudobulkRNAseq_pca = PCA(combined_agg_DF,scale = T, graph = F) #I just dont want the None category
+
+#gene variable DF
+gene_variables = as.data.frame(pseudobulkRNAseq_pca$var)[,1:4]
+gene_variables$genes = rownames(gene_variables)
+gene_variables$`gene loadings` = 'Endothelial'
+gene_variables$`gene loadings`[gene_variables$genes %in% Epithelial] = 'Epithelial'
+gene_variables$`gene loadings`[gene_variables$genes %in% Stroma] = 'Stroma'
+gene_variables$`gene loadings`[gene_variables$genes %in% Immune] = 'Immune'
+
+#samples DF
+data = as.data.frame(pseudobulkRNAseq_pca$ind$coord)
+rownames(data) = gsub('_4','_1',rownames(data))
+rownames(data) = gsub('_6','_2',rownames(data))
+rownames(data) = gsub('_8','_3',rownames(data))
+rownames(data) = gsub('_10','_4',rownames(data))
+
+data$Patients = sapply(strsplit(rownames(data), "_",fixed = T), "[",3)
+data$tissue = sapply(strsplit(rownames(data), "_",fixed = T), "[",1)
+data$method = sapply(strsplit(rownames(data), "_",fixed = T), "[",2)
+data$`gene loadings` = sapply(strsplit(rownames(data), "_",fixed = T), "[",4)
+data$`Tissue X Method` = paste0(data$tissue,'_',data$method)
+data$`Tissue X Method` = factor(data$`Tissue X Method`,levels = c('Normal_Cell','Tumor_Cell','Normal_Nucleus','Tumor_Nucleus'))
+
+p_level1 = ggplot() + 
+    geom_segment(data =gene_variables,  aes(x = rep(0,38), y = rep(0,38), xend = coord.Dim.1*max(abs(data$Dim.1)), yend = coord.Dim.2*max(abs(data$Dim.2)), color = `gene loadings`), arrow = arrow(length = unit(0.2, "cm")), show.legend = T ) + 
+  geom_hline(yintercept=0,linetype="dashed") + geom_vline(xintercept=0, linetype="dashed") +
+  geom_point(data=data,aes(x= Dim.1,y=Dim.2, fill = `gene loadings`, shape = patients), size = 4,color = 'black', shape = 21,alpha =0.75) +
+ # geom_label_repel(data = gene_variables, aes(label = genes, x = coord.Dim.1*max(abs(data$Dim.1)), y = coord.Dim.2*max(abs(data$Dim.2))),size = 2) +
+  theme_bw() +
+  ylab('PC2') +
+  xlab('PC1') +
+  labs(fill = "Cell Types") +
+  guides(fill = guide_legend(override.aes = list(shape= 21,alpha =1,size = 6))) +
+  scale_fill_manual(values = RColorBrewer::brewer.pal(n = 4, name = "Set1")) +
+  scale_color_manual(values = RColorBrewer::brewer.pal(n = 4, name = "Set1")) 
+
+p_patients = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = Patients)) + 
+  geom_hline(yintercept=0,linetype="dashed") + 
+  geom_vline(xintercept=0,linetype="dashed") + 
+  geom_point(size = 4,color = 'black', shape=21,alpha =0.75)  + 
+  ylab('PC2') +
+  xlab('PC1') +
+  theme_bw() + 
+  scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1])+
+  theme(legend.position = 'right')
+
+p_tissuemethod = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = `Tissue X Method`)) +
+  geom_hline(yintercept=0,linetype="dashed") + 
+  geom_vline(xintercept=0,linetype="dashed") + 
+  geom_point(size = 4,color = 'black', shape=21,alpha =0.75)  + 
+  ylab('PC2') +
+  xlab('PC1') +
+  theme_bw() +
+  theme(legend.position = 'right')+
+  scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 10, name = "Paired"))[c(8,7,10,9)])  
+
+p_tissuemethod34 = ggplot(data,aes(x= Dim.3,y=Dim.4, fill = `Tissue X Method`)) +
+  geom_hline(yintercept=0,linetype="dashed") + 
+  geom_vline(xintercept=0,linetype="dashed") + 
+  geom_point(size = 4,color = 'black', shape=21,alpha =0.75) + 
+  ylab('PC4') +
+  xlab('PC3') +
+  theme_bw() + 
+ scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 10, name = "Paired"))[c(8,7,10,9)])  
+
+
+pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_S9_PCA.pdf'),width = 12,height = 8) 
+((p_level1 | p_patients) / (p_tissuemethod | p_tissuemethod34) ) + plot_annotation(tag_levels = 'A')
+dev.off()
+
+```
+
+
+Figure 10A PCA of all 24 samples X 4 cell types.
+Figure 10B 4 volcanoes showing differentiation between pairs
+Figure 10c topGo in four pairs.
+
+
+```{r done}
+sessionInfo()
+
+dim(bulk_final[[1]])
+
+
+gene_list = bulk_final[[1]]$signif[1:10000]
+gene_list[gene_list=='NO'] =1
+gene_list[gene_list=='YES'] =0
+gene_list = as.numeric(gene_list)
+names(gene_list) = bulk_final[[1]]$genes[1:10000]
+
+topFUN = function(x=gene_list){y = rep(TRUE,length(x));y[x==1]=FALSE;names(y) = names(x);return(y)}
+
+x <- annFUN.org("BP", mapping = "org.Hs.eg.db", ID = "symbol")
+
+GOdata <- new("topGOdata",
+              ontology = "BP",
+              allGenes = gene_list,
+              geneSel = topFUN,
+              description = "GO analysis of DEGs",
+              annot = annFUN.org,mapping = "org.Hs.eg.db",ID = 'symbol')
+
+resultFis <- runTest(GOdata, algorithm = "classic", statistic = "fisher")
+
+allRes <- GenTable(GOdata, resultFis, topNodes = 5)
+
+
+
+
+```

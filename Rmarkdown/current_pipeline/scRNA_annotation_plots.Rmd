@@ -143,6 +143,53 @@ cnv_plot = ggplot(combinedNT_infercnv_summary, aes(y=cnv_score,x=predicted.ann_l
   theme(strip.background = element_rect(fill="lightgray",color= 'lightgray'),legend.position='none',axis.text.x = element_text(angle = 45, vjust = 1, hjust=1)) 
 ```
 
+```{r tumor cells}
+combinedNT_infercnv_summary$patient = gsub('4','1',combinedNT_infercnv_summary$patient)
+combinedNT_infercnv_summary$patient = gsub('6','2',combinedNT_infercnv_summary$patient)
+combinedNT_infercnv_summary$patient = gsub('8','3',combinedNT_infercnv_summary$patient)
+combinedNT_infercnv_summary$patient = gsub('10','4',combinedNT_infercnv_summary$patient)
+
+#malignant
+plots = list()
+
+combinedNT_infercnv_summary$`cell state`='non-malignant'
+methods = c('Cell','Nucleus')
+for(i in 1:2){
+  
+  method_temp = combinedNT_infercnv_summary[combinedNT_infercnv_summary$method == methods[i],]
+
+  q1 = quantile(method_temp$cnv_score,probs = seq(0,1,by = 0.1))[9]
+  q2 = quantile(method_temp$predicted.ann_level_3.score,probs = seq(0,1,by = 0.1))[9]
+
+  method_temp$`cell state`[method_temp$cnv_score>q1 & method_temp$predicted.ann_level_3.score < q2] = 'malignant'
+  
+  combinedNT_infercnv_summary$`cell state`[combinedNT_infercnv_summary$method == methods[i]] = method_temp$`cell state`
+ 
+  summarised_data = combinedNT_infercnv_summary %>% group_by(predicted.ann_level_3,patient,method,`cell state`) %>% summarise(n = length(cnv_score))
+  summarised_data = summarised_data[summarised_data$method == methods[i],]
+
+  summarised_data$`cell state` = factor(summarised_data$`cell state`,levels = c('non-malignant','malignant') )
+  
+  plots[[i]] = ggplot(data = summarised_data,aes(y = n,x= patient,fill = `cell state`)) + 
+    geom_bar(stat= 'identity',position = 'fill') + 
+    facet_grid(.~predicted.ann_level_3) +
+    ylab('Fraction') +
+    xlab('Patients') +
+    ggtitle(methods[i]) +
+    theme_bw() +
+    theme(legend.position=ifelse(i==1,'none','bottom'))
+   
+}
+
+
+#save plot  
+pdf(file.path(params$datapath,paste0('../results/Figures_March2024/FigureS8.pdf')),width = 8,height = 8)
+(plots[[1]]/plots[[2]]) + plot_annotation(tag_levels = 'A') 
+dev.off()
+```
+
+
+
 
 # Tumor - normal lineplots
 ```{r lineplots}
@@ -266,7 +313,7 @@ p_genes = ggplot(data=patient_specific, aes(x=type, y=meangenes, fill=method)) +
 table(metadata$method)
 
 #save plot  
-pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/Figure2.pdf')),width = 11,height = 6)
+pdf(file.path(params$datapath,paste0('../results/Figures_March2024/Figure2.pdf')),width = 11,height = 6)
 ((p_cells / p_genes  | plot_annot_fractions)/guide_area()) + plot_layout(height = c(10,1),guides = 'collect') + plot_annotation(tag_levels = 'A')
 dev.off()
 ```

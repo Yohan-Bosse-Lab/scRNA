@@ -57,7 +57,7 @@ for(i in 1:2){
   if(i == 1) samples = c(1:length(filenames))[regexpr('CST-...._depletion_',filenames)>0]
   if(i == 2) samples = c(1:length(filenames))[regexpr('CTT-...._depletion_',filenames)>0]
  
-  combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]])
+  combined_permethod[[i]] = merge(seurat.objects[[samples[1]]],seurat.objects[samples[-1]],merge.dr = T)
 }
 saveRDS(combined_permethod,file.path(params$datapath,"combined_depletion_pertissue.rds"))
 } else combined_permethod = readRDS(file.path(params$datapath,'combined_depletion_pertissue.rds'))
@@ -370,7 +370,7 @@ cnvMean = ggplot(metadata_simplified, aes(cnv_score,predicted.ann_level_3)) + ge
   pdf(file.path(params$datapath,'../results/Figures_March2024/Figure10_UMAPs_depletion24.pdf'),width = 12,height = 9) 
  ((plot_depletion_N + barplots_general[[1]] + plot_depletion_T + barplots_general[[2]] + plot_layout(widths = c(10,1,10,1))) / 
  
-  (sc_sn_plots[[1]]|sc_sn_plots[[2]] | ((p_method_type / p_mt_method_type)  +     plot_layout(guides = 'collect')        )      ) + plot_layout(widths = c(6,6))) + plot_annotation(tag_levels = list(c('A','','B','','C','D','E','F')))
+  (sc_sn_plots[[1]]|sc_sn_plots[[2]] | ((p_method_type / p_mt_method_type)  + plot_layout(guides = 'collect')        )      ) + plot_layout(widths = c(6,6))) + plot_annotation(tag_levels = list(c('A','','B','','C','D','E','F'))) & theme(plot.tag = element_text(face = 'plain'))
           #                                                                                                                                 )
   dev.off()
 ```

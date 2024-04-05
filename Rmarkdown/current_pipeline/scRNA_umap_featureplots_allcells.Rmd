@@ -63,7 +63,7 @@ for(i in 1:24){
 }
 
 #combine
-combined = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)])
+combined = merge(seurat.objects.subsetted[[1]],seurat.objects.subsetted[c(2:24)],merge.dr =T)
 
 #
 combined@meta.data$predicted.ann_level_3_simplified = combined@meta.data$predicted.ann_level_3
@@ -128,7 +128,7 @@ dimplots_patient = DimPlot(combined, reduction = "proj.umap", group.by = "patien
 
 
 png(file.path(params$datapath,'../results/Figures_March2024/UMAP_allcells.png'),width = 3000,height = 2250)
-(dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 34))
+(dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 34,face= 'plain'))
 dev.off()
 ```
 
@@ -156,8 +156,7 @@ for(i in 1:24){
       summarise(n = length(predicted.ann_level_1),.groups='keep')
 
   legend_position = ifelse(i ==9|i ==10,"right",'none')
-  print(paste0('i ', legend_position)) 
-  
+
 barplots_general[[i]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicted.ann_level_1)) +
     geom_bar(stat="identity")+scale_fill_manual('Cell Types (level1)',values=c(RColorBrewer::brewer.pal(n = 5, name = "Set1")))+theme_classic()+theme(axis.title = element_text(size = 8),legend.position = legend_position) +ylab('Total Number of cells') + xlab('')
 
@@ -174,19 +173,25 @@ barplots_general[[i]] = ggplot(data=data_summarised, aes(x='', y=n,fill=predicte
   plot_UMAPS[[i]] = plot_UMAP
 }
   
+
+#
+tag_levels= list(c('A','','B','',
+                   'C','','D','',
+                   'E','','F','',
+                   'G','','H',''))
 #save plots  
   pdf(file.path(params$datapath,'../results/Figures_March2024/FigureS3.pdf'),width = 9,height = 10.5) 
  (plot_UMAPS[[7]] + barplots_general[[7]] + plot_UMAPS[[9]] + barplots_general[[9]] + plot_layout(widths = c(10,1,10,1))) / 
  (plot_UMAPS[[13]] + barplots_general[[13]] + plot_UMAPS[[15]] + barplots_general[[15]] + plot_layout(widths = c(10,1,10,1))) / 
  (plot_UMAPS[[19]] + barplots_general[[19]] + plot_UMAPS[[21]] + barplots_general[[21]] + plot_layout(widths = c(10,1,10,1))) /
- (plot_UMAPS[[1]] + barplots_general[[1]] + plot_UMAPS[[3]] + barplots_general[[3]] + plot_layout(widths = c(10,1,10,1)))
+ (plot_UMAPS[[1]] + barplots_general[[1]] + plot_UMAPS[[3]] + barplots_general[[3]] + plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = tag_levels) & theme(plot.tag = element_text(face = 'plain'))
   dev.off()
 
    pdf(file.path(params$datapath,'../results/Figures_March2024/FigureS5.pdf'),width = 9,height = 10.5) 
  (plot_UMAPS[[11]] + barplots_general[[11]] + plot_UMAPS[[10]] + barplots_general[[10]] + plot_layout(widths = c(10,1,10,1))) / 
  (plot_UMAPS[[16]] + barplots_general[[16]] + plot_UMAPS[[18]] + barplots_general[[18]] + plot_layout(widths = c(10,1,10,1))) / 
  (plot_UMAPS[[22]] + barplots_general[[22]] + plot_UMAPS[[24]] + barplots_general[[24]] + plot_layout(widths = c(10,1,10,1))) /
- (plot_UMAPS[[4]] + barplots_general[[4]] + plot_UMAPS[[6]] + barplots_general[[6]] + plot_layout(widths = c(10,1,10,1)))
+ (plot_UMAPS[[4]] + barplots_general[[4]] + plot_UMAPS[[6]] + barplots_general[[6]] + plot_layout(widths = c(10,1,10,1))) + plot_annotation(tag_levels = tag_levels) & theme(plot.tag = element_text(face = 'plain'))
   dev.off()
 
 
@@ -216,7 +221,7 @@ fplots = list()
 
 for(i in 1:2)
   {
-  fplots[[(i*5) - 4]] = DimPlot(combined_permethod[[i]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols = col,pt.size=0.01,raster= F,order = F, label = T, label.size = 7, repel = T)  + ggtitle(ifelse(i==1,'Normal ~ Cell','Normal ~ Nucleus')) + umap_theme() + theme(legend.position = "none")
+  fplots[[(i*5) - 4]] = DimPlot(combined_permethod[[i]], reduction = "proj.umap", group.by = "predicted.ann_level_1",cols =  brewer.pal(n = 5, name = "Set1"),pt.size=0.01,raster= F,order = F, label = T, label.size = 7, repel = T)  + ggtitle(ifelse(i==1,'Normal ~ Cell','Normal ~ Nucleus')) + umap_theme() + theme(legend.position = "none")
 
   fplots[[(i*5) - 3]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Immune_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Immune markers') + umap_theme()
   fplots[[(i*5) - 2]] = FeaturePlot(combined_permethod[[i]], reduction = "proj.umap",features = 'Epithelial_module1',pt.size=0.01,raster= F,order = T,cols = cols) + theme(legend.position = "right") + ggtitle('Epithelial markers')+ umap_theme()
@@ -227,7 +232,7 @@ for(i in 1:2)
 #save plot as png (because a .pdf as a vectorized image is too big)
 png(file.path(params$datapath,'../results/Figures_March2024/Figure_S2.png'),width = 1560,height = 600)
 ((fplots[[1]]|fplots[[2]]|fplots[[3]]|fplots[[4]]|fplots[[5]]) /
-(fplots[[6]]|fplots[[7]]|fplots[[8]]|fplots[[9]]|fplots[[10]])) + plot_annotation(tag_levels = 'A') + plot_layout(guides = 'collect')
+(fplots[[6]]|fplots[[7]]|fplots[[8]]|fplots[[9]]|fplots[[10]])) + plot_annotation(tag_levels = 'A') + plot_layout(guides = 'collect') & theme(plot.tag = element_text(face = 'plain'))
 dev.off()
 ```
 
