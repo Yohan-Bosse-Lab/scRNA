@@ -451,10 +451,10 @@ pseudobulkRNAseq_pca = PCA(combined_agg_DF,scale = T, graph = F) #I just dont wa
 #gene variable DF
 gene_variables = as.data.frame(pseudobulkRNAseq_pca$var)[,1:4]
 gene_variables$genes = rownames(gene_variables)
-gene_variables$`gene loadings` = 'Endothelial'
-gene_variables$`gene loadings`[gene_variables$genes %in% Epithelial] = 'Epithelial'
-gene_variables$`gene loadings`[gene_variables$genes %in% Stroma] = 'Stroma'
-gene_variables$`gene loadings`[gene_variables$genes %in% Immune] = 'Immune'
+gene_variables$`Loadings` = 'Endothelial markers'
+gene_variables$`Loadings`[gene_variables$genes %in% Epithelial] = 'Epithelial markers'
+gene_variables$`Loadings`[gene_variables$genes %in% Stroma] = 'Stroma markers'
+gene_variables$`Loadings`[gene_variables$genes %in% Immune] = 'Immune markers'
 
 #samples DF
 data = as.data.frame(pseudobulkRNAseq_pca$ind$coord)
@@ -466,18 +466,18 @@ rownames(data) = gsub('_10','_4',rownames(data))
 data$Patients = sapply(strsplit(rownames(data), "_",fixed = T), "[",3)
 data$tissue = sapply(strsplit(rownames(data), "_",fixed = T), "[",1)
 data$method = sapply(strsplit(rownames(data), "_",fixed = T), "[",2)
-data$`gene loadings` = sapply(strsplit(rownames(data), "_",fixed = T), "[",4)
+data$`Loadings` = sapply(strsplit(rownames(data), "_",fixed = T), "[",4)
 data$`Tissue X Method` = paste0(data$tissue,'_',data$method)
 data$`Tissue X Method` = factor(data$`Tissue X Method`,levels = c('Normal_Cell','Tumor_Cell','Normal_Nucleus','Tumor_Nucleus'))
 
 p_level1 = ggplot() + 
-    geom_segment(data =gene_variables,  aes(x = rep(0,38), y = rep(0,38), xend = coord.Dim.1*max(abs(data$Dim.1)), yend = coord.Dim.2*max(abs(data$Dim.2)), color = `gene loadings`), arrow = arrow(length = unit(0.2, "cm")), show.legend = T ) + 
+    geom_segment(data =gene_variables,  aes(x = rep(0,38), y = rep(0,38), xend = coord.Dim.1*max(abs(data$Dim.1)), yend = coord.Dim.2*max(abs(data$Dim.2)), color = `Loadings`), arrow = arrow(length = unit(0.2, "cm")), show.legend = T ) + 
   geom_hline(yintercept=0,linetype="dashed") + geom_vline(xintercept=0, linetype="dashed") +
-  geom_point(data=data,aes(x= Dim.1,y=Dim.2, fill = `gene loadings`, shape = patients), size = 4,color = 'black', shape = 21,alpha =0.75) +
+  geom_point(data=data,aes(x= Dim.1,y=Dim.2, fill = `Loadings`, shape = patients), size = 4,color = 'black', shape = 21,alpha =0.75) +
  # geom_label_repel(data = gene_variables, aes(label = genes, x = coord.Dim.1*max(abs(data$Dim.1)), y = coord.Dim.2*max(abs(data$Dim.2))),size = 2) +
   theme_bw() +
-  ylab('PC2') +
-  xlab('PC1') +
+  ylab(paste0('PC2 (',round(pseudobulkRNAseq_pca$eig[2,2],2),'%)')) +
+  xlab(paste0('PC1 (',round(pseudobulkRNAseq_pca$eig[1,2],2),'%)')) +
   labs(fill = "Cell Types") +
   guides(fill = guide_legend(override.aes = list(shape= 21,alpha =1,size = 6))) +
   scale_fill_manual(values = RColorBrewer::brewer.pal(n = 4, name = "Set1")) +
@@ -487,8 +487,8 @@ p_patients = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = Patients)) +
   geom_hline(yintercept=0,linetype="dashed") + 
   geom_vline(xintercept=0,linetype="dashed") + 
   geom_point(size = 4,color = 'black', shape=21,alpha =0.75)  + 
-  ylab('PC2') +
-  xlab('PC1') +
+  ylab(paste0('PC2 (',round(pseudobulkRNAseq_pca$eig[2,2],2),'%)')) +
+  xlab(paste0('PC1 (',round(pseudobulkRNAseq_pca$eig[1,2],2),'%)')) +
   theme_bw() + 
   scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1])+
   theme(legend.position = 'right')
@@ -497,8 +497,8 @@ p_tissuemethod = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = `Tissue X Method`)) +
   geom_hline(yintercept=0,linetype="dashed") + 
   geom_vline(xintercept=0,linetype="dashed") + 
   geom_point(size = 4,color = 'black', shape=21,alpha =0.75)  + 
-  ylab('PC2') +
-  xlab('PC1') +
+  ylab(paste0('PC2 (',round(pseudobulkRNAseq_pca$eig[2,2],2),'%)')) +
+  xlab(paste0('PC1 (',round(pseudobulkRNAseq_pca$eig[1,2],2),'%)')) +
   theme_bw() +
   theme(legend.position = 'right')+
   scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 10, name = "Paired"))[c(8,7,10,9)])  
@@ -507,8 +507,8 @@ p_tissuemethod34 = ggplot(data,aes(x= Dim.3,y=Dim.4, fill = `Tissue X Method`)) 
   geom_hline(yintercept=0,linetype="dashed") + 
   geom_vline(xintercept=0,linetype="dashed") + 
   geom_point(size = 4,color = 'black', shape=21,alpha =0.75) + 
-  ylab('PC4') +
-  xlab('PC3') +
+  ylab(paste0('PC4 (',round(pseudobulkRNAseq_pca$eig[4,2],2),'%)')) +
+  xlab(paste0('PC3 (',round(pseudobulkRNAseq_pca$eig[3,2],2),'%)')) +
   theme_bw() + 
  scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 10, name = "Paired"))[c(8,7,10,9)])  
 

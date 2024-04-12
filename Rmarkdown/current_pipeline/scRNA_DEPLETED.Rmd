@@ -426,7 +426,7 @@ data$`method X Patients` = rownames(data)
 
 
 #gene variable DF
-plot_depleted_all = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = `method X Patients` )) + 
+plot_depleted_all2 = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = `method X Patients` )) + 
   geom_hline(yintercept=0,linetype="dashed") + 
   geom_vline(xintercept=0,linetype="dashed") + 
   geom_point(size = 6,color = 'black', shape=21,alpha =0.75)  + 
@@ -462,6 +462,7 @@ combined = subset(combined, subset = predicted.ann_level_1 != 'Unclassified')
 combined = subset(combined, subset = type != 'Tumor')
 combined@meta.data$method = gsub('immune','Immune',combined@meta.data$method)
 
+
 combined_agg_DF = AggregateExpression(combined, assays = "SCT", return.seurat = F, group.by = c('method', "patient","predicted.ann_level_1"))
 combined_agg_DF = data.frame(combined_agg_DF$SCT,check.names = F)
 
@@ -494,16 +495,102 @@ p_tissuemethod = ggplot(data,aes(x= Dim.1,y=Dim.2,shape = method, fill = `cell t
     geom_hline(yintercept=0,linetype="dashed") + 
     geom_vline(xintercept=0,linetype="dashed") + 
     geom_point(size = 4,alpha =0.75)  + 
-    ylab('PC2') +
-    xlab('PC1') +
+    ylab(paste0('PC2 (',round(pseudobulkRNAseq_pca$eig[2,2],1),'%)')) +
+    xlab(paste0('PC1 (',round(pseudobulkRNAseq_pca$eig[1,2],1),'%)')) +
     scale_fill_manual(values = brewer.pal(n = 4, name = "Set1")) +
     scale_color_manual(values = brewer.pal(n = 4, name = "Set1")) +
     scale_shape_manual(values=c(21, 22, 24)) +
     theme_bw() +
     theme(legend.position = 'right') +
-    ggtitle('Cell type canonical markers (38 genes)')+
+    ggtitle('Cell type canonical markers (39 genes)')+
     guides(fill = guide_legend(override.aes = list(shape= 21,fill = brewer.pal(n = 4, name = "Set1"))))
 ```
+
+
+# PCA marker genes 4 plots
+```{r pca marker genes, message= T}
+#got this file from OFlanagan_et_al2019. 
+stress_references = read_xlsx(file.path(params$datapath,"512genes_OFlanagan_et_al2019.xlsx"))
+
+#prepare output df
+stress_genes = data.frame(gene = rownames(seurat.objects[[i]]@assays$RNA)[rownames(seurat.objects[[i]]@assays$RNA) %in% stress_references$gene_symbol])
+nonstressgenes = rownames(combined@assays$RNA)[rownames(combined@assays$RNA) %in% stress_genes[,1]==FALSE]
+
+# 
+combined = subset(combined_raw, subset = predicted.ann_level_1 != 'Unclassified')
+combined = subset(combined, subset = type != 'Tumor')
+combined = subset(combined,features = nonstressgenes)
+combined@meta.data$method = gsub('immune','Immune',combined@meta.data$method)
+combined@meta.data$met_type = paste0(combined@meta.data$method, '_',combined@meta.data$type)
+
+ct = c('_Immune','_Epithelial','_Endothelial','_Stroma')
+plots = list()
+
+for(i in 1:4)
+{
+
+combined_agg_DF = AggregateExpression(combined, assays = "SCT", return.seurat = F, group.by = c('method', "patient","predicted.ann_level_1"))
+combined_agg_DF = data.frame(combined_agg_DF$SCT,check.names = F)
+
+# each 'cell' is a donor-condition-celltype pseudobulk profile
+combined_agg_DF = combined_agg_DF[,order(colnames(combined_agg_DF))]
+
+#remove stress genes
+#combined_agg_DF = combined_agg_DF[,colnames(combined_agg_DF) %in% stress_genes[,1]]
+
+#normalise by the number of cells
+number_of_cells = as.data.frame(table(combined@meta.data$patient,combined@meta.data$predicted.ann_level_1,combined@meta.data$method))
+number_of_cells$type_method_level1 = paste(number_of_cells$Var3,number_of_cells$Var1,number_of_cells$Var2,sep = '_')
+number_of_cells = number_of_cells[order(number_of_cells$type_method_level1),]
+
+combined_agg_DF = (apply(combined_agg_DF, 1, function(x) x/number_of_cells$Freq))
+
+
+###do pca ct by ct
+combined_agg_DF = combined_agg_DF[grep(ct[i],rownames(combined_agg_DF)),]
+
+#PCA
+pseudobulkRNAseq_pca = PCA(combined_agg_DF,scale = T, graph = F) #I just dont want the None category
+
+#samples DF
+data = as.data.frame(pseudobulkRNAseq_pca$ind$coord)
+rownames(data) = gsub('_4','_1',rownames(data))
+rownames(data) = gsub('_6','_2',rownames(data))
+rownames(data) = gsub('_8','_3',rownames(data))
+rownames(data) = gsub('_10','_4',rownames(data))
+
+data$Patients = paste0('P',sapply(strsplit(rownames(data), "_",fixed = T), "[",2))
+#data$tissue = sapply(strsplit(rownames(data), "_",fixed = T), "[",1)
+data$method = sapply(strsplit(rownames(data), "_",fixed = T), "[",1)
+data$`cell types` = sapply(strsplit(rownames(data), "_",fixed = T), "[",3)
+data$`method X Patients` = gsub(ct[i],'',rownames(data))
+
+p_tissuemethod = ggplot(data,aes(x= Dim.1,y=Dim.2, fill = `method X Patients`)) +
+    geom_hline(yintercept=0,linetype="dashed") + 
+    geom_vline(xintercept=0,linetype="dashed") + 
+    geom_point(size = 4,alpha =0.75,shape =21,color = 'black') +
+  #  ggrepel::geom_text_repel(aes(label = Patients)) +
+    ylab(paste0('PC2 (',round(pseudobulkRNAseq_pca$eig[2,2],1),'%)')) +
+    xlab(paste0('PC1 (',round(pseudobulkRNAseq_pca$eig[1,2],1),'%)')) +
+    theme_bw() +
+    theme(legend.position = 'right') +
+    scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 11, name = "RdYlBu")[c(4:1,8:11)],RColorBrewer::brewer.pal(n = 9, name = "Greens")[c(3,5,7,9)])  ) +
+    ggtitle(paste0(gsub('_','',ct[i]),' cells ~ gene expression'))
+
+
+plots[[i]] = p_tissuemethod
+}
+
+
+pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_S10_depletedPCA.pdf'),width = 12,height = 8) 
+plots[[1]]+plots[[2]]+plots[[3]]+plots[[4]]+ plot_layout(guides = 'collect') + plot_annotation(tag_levels = 'A')
+dev.off()
+
+
+```
+
+
+
 
 
 # PCA cell types
@@ -549,31 +636,19 @@ p_celltype  = ggplot() +
   scale_fill_manual(values = c(brewer.pal(n = 11, name = "RdYlBu")[c(4:1,8:11)],brewer.pal(n = 9, name = "Greens")[c(3,5,7,9)])  ) +
   theme(legend.position = 'right') +
   ggtitle('Cell types (level3)')
+
 #
 ```
 
 
 ```{r plots}
 
-pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_S10_depletedPCA.pdf'),width = 12,height = 8) 
-(plot_depleted_all+ p_celltype)  / ( p_tissuemethod+ plot_spacer()) + plot_annotation(tag_levels = 'A')
-dev.off()
-
-
-```
-
-
-
-
-
-
-
-
-
-
-
-
+#pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_S10_depletedPCA.pdf'),width = 12,height = 8) 
+#(plot_depleted_all+ p_celltype)  / ( p_tissuemethod+ plot_spacer()) + plot_annotation(tag_levels = 'A')
+#dev.off()
 
 ```
+
+
 
 
