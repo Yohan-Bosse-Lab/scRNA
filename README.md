@@ -9,6 +9,7 @@
      * `scRNA_annotation_plots.Rmd` (many plots are generated here)
      * `scRNA_umap_featureplots_allcells.Rmd` (two supplementary plots)
      * `scRNA_bulkDEG.Rmd` (differential gene expression analyses and plots)
+     * `scRNA_H&E.Rmd` (immunohistochemical analyses and plots)
   * There are several R functions described in the [R](https://github.com/Yohan-Bosse-Lab/scRNA/tree/main/R) subfolder directly.
 
 
