@@ -231,34 +231,36 @@ data_summarised2 = data_summarised2[data_summarised2$predicted.ann_level_3 != 'N
 #boxplot
 tumor_normal_transition = ggplot(data_summarised2, aes(x=predicted.ann_level_3,y=fractions,fill=method)) +  
     geom_boxplot(varwidth=T) + 
-     geom_hline(yintercept=1, linetype="dashed", color = "black") +
-    facet_grid( . ~predicted.ann_level_1, scales = "free_x", space = "free_x",switch = 'y') + scale_y_continuous(trans='log10',breaks = c(0.01,0.1,1,10,100), label = c(0.01,0.1,1,10,100)) +
-  ylab('Cells in Tumor / cells in Normal') +
-  xlab('Level3 annotation') +
-  scale_fill_manual(values = hue_pal()(3)[c(1,3)])+
-  ggtitle('Normal -> Tumor transition (ratio)') +  
-  theme_bw()+
-     theme(strip.background = element_rect(fill="lightgray",color= 'lightgray'),strip.text.x = element_text(size = 8),legend.position='none',axis.title.x=element_blank(),axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
+    geom_hline(yintercept=1, linetype="dashed", color = "black") +
+    facet_wrap(predicted.ann_level_1~., scales = "free", nrow = 2) + scale_y_continuous(trans='log10',breaks = c(0.01,0.1,1,10,100), label = c(0.01,0.1,1,10,100)) +
+    ylab('Cells in Tumor / cells in Normal') +
+    xlab('Level3 annotation') +
+    scale_fill_manual(values = hue_pal()(3)[c(1,3)])+
+    ggtitle('Normal -> Tumor transition (ratio)') +  
+    theme_bw()+
+    theme(strip.background = element_rect(fill="lightgray",color= 'lightgray'),strip.text.x = element_text(size = 8),legend.position='none',axis.title.x=element_blank(),axis.text.x = element_text(angle = 45, vjust = 1, hjust=1))
 
 ###summarise for a lineplots
 data_summarised_fraction =  data_summarised %>% 
   group_by(predicted.ann_level_1,predicted.ann_level_3,method,type) %>%
   summarise(fraction = mean(fraction),.groups='keep')
 
-#clean-up a bit
-#data_summarised_fraction = data_summarised_fraction[!(data_summarised_fraction$predicted.ann_level_3 %in% c('SM activated stress response','None','Submucosal Secretory','Basal')),]
+#hack to make sure all data are there
+data_summarised[190,] = data_summarised[43,]
+data_summarised[190,5] = 4
+data_summarised[190,8] = 0
 
 #plot
-lineplots <- ggplot(data_summarised_fraction, aes(x=type, y=fraction, group=method)) +
-  geom_line(aes(color=method))+
-  geom_point(aes(color=method)) + 
-  facet_wrap(predicted.ann_level_1~predicted.ann_level_3,nrow = 5, ncol = 3, scales = "free_y") +
-  ggtitle('Normal -> Tumor transition (percentage)') + 
-  scale_color_manual(values = hue_pal()(3)[c(1,3)])+
-  ylab("Percentage of total cellls in dataset") +
-  xlab("") +
-  theme_bw()+
-  theme(strip.background = element_rect(fill="lightgray",colour = 'lightgray'),strip.text.x = element_text(size = 8,margin=margin()),legend.position='bottom')
+lineplots <- ggplot(data_summarised, aes(x=type, y=fraction,fill = method,group=interaction(patient,method))) +
+    geom_line(linetype = 'dashed')+
+    geom_point(color='black', shape =21,size = 2) + 
+    facet_wrap(predicted.ann_level_1~predicted.ann_level_3,nrow = 5, ncol = 3, scales = "free_y") +
+    ggtitle('Normal -> Tumor transition (percentage)') + 
+    scale_fill_manual(values = hue_pal()(3)[c(1,3)])+
+    ylab("Percentage of total cellls in dataset") +
+    xlab("") +
+    theme_bw()+
+    theme(strip.background = element_rect(fill="lightgray",colour = 'lightgray'),strip.text.x = element_text(size = 8,margin=margin()),legend.position='bottom')
 
 #save plot  
 pdf(file.path(params$datapath,paste0('../results/Figures_March2024/Figure7_cells24.pdf')),width = 18,height = 8)
