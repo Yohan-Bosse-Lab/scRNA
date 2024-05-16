@@ -1,5 +1,5 @@
 ---
-title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -108,6 +108,7 @@ dimplots_allcells = DimPlot(combined, reduction = "proj.umap", group.by = "predi
     labs(color = "Cell Types (level3)") +
     umap_theme() + theme(plot.title = element_text(size = 42),legend.text = element_text(size=16),legend.title = element_text(size=28), legend.position = 'right')
 
+
 dimplots_type = DimPlot(combined, reduction = "proj.umap", group.by = "type",pt.size=0.01,raster= F,order = F, label.size = 4) + 
     ggtitle('All cells/nuclei ~ Tissue type') +
     guides(shape='none',color=guide_legend(override.aes = list(size=10), ncol=1)) +
@@ -128,7 +129,7 @@ dimplots_patient = DimPlot(combined, reduction = "proj.umap", group.by = "patien
 
 
 png(file.path(params$datapath,'../results/Figures_March2024/UMAP_allcells.png'),width = 3000,height = 2250)
-(dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) + plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 34,face= 'plain'))
+(dimplots_allcells | dimplots_type) / (dimplots_method | dimplots_patient) #+ plot_annotation(tag_levels = 'A') & theme(plot.tag = element_text(size = 34,face= 'plain'))
 dev.off()
 ```
 
@@ -199,7 +200,7 @@ tag_levels= list(c('A','','B','',
 
 
 # feature plots
-* Feature plots avec les marqueurs EPCAM, CLDN5, COL1A2 et PTPRC pourraient aussi illustrer les grands compartiments Epithelial, Endothelial, Stromal et Immune (panels E, F, G, H).
+* Feature plots with gene markers EPCAM, CLDN5, COL1A2 and PTPRC to illustrate Epithelial, Endothelial, Stromal and Immune (panels E, F, G, H).
 ```{r feature plots, message= T}
 
 combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))

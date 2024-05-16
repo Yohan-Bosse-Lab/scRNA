@@ -187,7 +187,7 @@ netVisual_aggregate(cellchats[[3]], signaling = gene, layout = "circle", edge.wi
 netVisual_aggregate(cellchats[[4]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~nucleus (Tumor)'), edge.weight.max = wmax,top=0.1)
 dev.off()
 
-#For other genes like CADM, EPHA and SEMA6, barplot shows big difference in nuclei tumor. When looking at network we see a different network topology in the nuclei tumor, which we would have missed with only cell sequencing. With snRNA-seq it is pretty obvious the normal/tumor difference. The CADM cell-cell interaction pathway is comprised of two self-interacting ligand-receptor genes (CADM1 and CADM3), where CADM1 is involved in the formation and maintenance of epithelial structure and both genes are known as tumor suppressor genes in various cancers, including lung  (https://journals.plos.org/plosone/article?id=10.1371/journal.pone.0082894). . Same story for SEMA6 and EPHA, both known to involved in oncogenesis (ref, ref, ref)
+#
 gene = 'MHC-I'
 CellChatDB.ccc$interaction[CellChatDB.ccc$interaction$pathway_name==gene,]
 pdf(file.path(params$datapath,paste0('../results/Figures_Oct2023/cellchat/cellchat_',gene,'.pdf')),width = 6,height = 6) 
@@ -199,16 +199,6 @@ netVisual_aggregate(cellchats[[2]], signaling = gene, layout = "circle", edge.wi
 netVisual_aggregate(cellchats[[3]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~cell (Tumor)'), edge.weight.max = wmax,top=0.1)
 netVisual_aggregate(cellchats[[4]], signaling = gene, layout = "circle", edge.width.max = 10, signaling.name = paste0(gene,'~nucleus (Tumor)'), edge.weight.max = wmax,top=0.1)
 dev.off()
-
-#
-#pdf(file.path(params$datapath,'../results/Figures_August2023/cellchat/cellchat_ALL.pdf'),width = 6,height = 6) 
-#par(mfrow = c(2,2), xpd=T)
-#netVisual_circle(cellchats[[1]]@net$count, vertex.weight = as.numeric(table(cellchats[[1]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ cell (Normal)")
-#netVisual_circle(cellchats[[2]]@net$count, vertex.weight = as.numeric(table(cellchats[[2]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ nucleus (Normal)")
-#netVisual_circle(cellchats[[3]]@net$count, vertex.weight = as.numeric(table(cellchats[[3]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ cell (Tumor)")
-#netVisual_circle(cellchats[[4]]@net$count, vertex.weight = as.numeric(table(cellchats[[4]]@idents)), weight.scale = T, label.edge= F, title.name = "Number of interactions ~ nucleus (Tumor)")
-#dev.off()
-
 
 #interactions probabilities
 p_com=list()

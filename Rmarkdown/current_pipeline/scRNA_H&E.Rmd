@@ -1,0 +1,133 @@
+---
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
+author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
+date: "`r Sys.time()`"
+output:
+  html_document:
+    number_sections: T
+params:
+  datapath: 'C:/Users/renseb01/Documents/scRNA/scRNA/data'
+  outputpath: '../..' 
+---
+
+
+# Setup
+```{r, setup,echo=FALSE}
+knitr::opts_knit$set(root.dir = params$datapath)
+knitr::opts_chunk$set(echo=TRUE, message=FALSE, warning=FALSE, cache=FALSE, cache.lazy=FALSE)
+```
+
+
+```{r, requirements}
+library(RColorBrewer)
+library(dplyr) #data handling
+library(patchwork) #data viz
+library(ggplot2) #data viz
+library(tidyr)
+library(readxl)
+source('../R/azimuth_analysis.R')
+```
+
+
+# Loading data  
+```{r loading,message  = T}  
+filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
+metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
+
+metadata = relabeler(metadata)
+metadata$method = gsub('immune','Immune',metadata$method)
+colnames(metadata)[8] = 'Patient'
+
+metadata$Patient = gsub('4','Patient 1',metadata$Patient)
+metadata$Patient = gsub('6','Patient 2',metadata$Patient)
+metadata$Patient = gsub('8','Patient 3',metadata$Patient)
+metadata$Patient = gsub('10','Patient 4',metadata$Patient)
+
+h_e = read_xlsx(file.path(params$datapath,'Cell_number_lames_PJ_2024_Plos.xlsx'),sheet ='data')
+h_e$Patient = as.character(h_e$Patient)
+```
+
+# summarising data  
+```{r summary,message = T}  
+data_summarised = metadata %>% 
+    group_by(predicted.ann_level_1,method,type,Patient) %>%
+    summarise(Fraction = length(predicted.ann_level_1),.groups='keep') %>% filter(predicted.ann_level_1 == 'Epithelial' | predicted.ann_level_1 == 'Immune')
+
+data_summarised_staining = h_e %>% select(c('Patient','method','type','Epithelial','Immune')) %>% pivot_longer(cols = 4:5,names_to = "predicted.ann_level_1",values_to = 'Fraction')
+
+data = bind_rows(data_summarised,data_summarised_staining)
+data$method = gsub('Immune depleted cells','Immune\ndepleted cells',data$method)
+
+data$method = factor(data$method,levels = c('Staining','Cell','Nucleus','Immune\ndepleted cells'))
+
+```
+
+
+# summarising macrophages
+```{r macrophage,message = T} 
+metadata_complete = metadata %>% complete(predicted.ann_level_4,method,type, Patient)
+data_summarised_mac = metadata_complete %>% 
+    group_by(predicted.ann_level_4,method,type,Patient) %>%
+    summarise(`Number of Cells` = length(predicted.ann_level_4),.groups='keep') %>% filter(predicted.ann_level_4 == "Interstitial macrophages")%>% filter(method != 'Immune depleted cells')
+
+data_summarised_staining = h_e %>% select(c('Patient','method','type','Macrophages')) %>% pivot_longer(cols = 4,names_to = "predicted.ann_level_4",values_to = 'Number of Cells') 
+
+data_mac = bind_rows(data_summarised_mac,data_summarised_staining)
+#data_mac$method = gsub('Immune depleted cells','Immune deple-\nted cells',data_mac$method)
+
+data_mac$method = factor(data_mac$method,levels = c('Staining','Cell','Nucleus'))
+```
+
+
+```{r plots}
+data$path = ifelse(data$type=='Normal','Non-tumor (Normal) parenchyma','Tumor Parenchyma')
+
+#this plot, I then replace with real slide information.
+pathology_placeholder = ggplot(data=data, aes(x=method, y=Fraction, fill=predicted.ann_level_1)) +
+  geom_bar(stat= 'identity',position = 'fill') +
+  facet_grid(Patient~path)+
+  xlab('') +
+  scale_fill_manual('Cell Types',values= c(RColorBrewer::brewer.pal(n = 4, name = "Paired")[c(2,4)])) + 
+  theme_bw() +
+  theme(legend.position = 'none',
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.text.y = element_text(size = 6),
+        strip.background = element_rect(fill="lightgray",colour = 'lightgray'))
+
+
+
+plot_allmethods = ggplot(data=data, aes(x=method, y=Fraction, fill=predicted.ann_level_1)) +
+  geom_bar(stat= 'identity',position = 'fill',width = 0.5) +
+  facet_grid(Patient~type)+
+  scale_fill_manual('Cell Types',values= c(RColorBrewer::brewer.pal(n = 4, name = "Paired")[c(1,4)])) + 
+  theme_bw() +
+  xlab('') + 
+  theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        axis.text.y = element_text(size = 6),
+        strip.text.y = element_text(size = 8),
+        strip.background = element_rect(fill="lightgray",colour = 'lightgray'))
+
+
+plot_macro <- ggplot(data_mac, aes(x=type, y=`Number of Cells`,fill = Patient)) +
+  geom_line(aes(group = Patient),linetype = "dashed") +
+  geom_point(color = 'black', shape=21,size = 4) +
+  xlab('') +
+  ylab('Number of Cells') + 
+  facet_wrap(.~method,scales = "free_y",nrow = 1) +
+  scale_fill_manual(values = c(RColorBrewer::brewer.pal(n = 4, name = "Accent"))[4:1])+
+  theme_bw() + ggtitle('Macrophages (CD68) & Interstitial macrophages (level4)') +
+  theme(legend.position = 'right',
+        axis.text.x = element_text(angle = 45, vjust = 1, hjust=1),
+        strip.background = element_rect(fill="lightgray",colour = 'lightgray'))
+
+
+#save plot  
+pdf(file.path(params$datapath,paste0('../results/Figures_March2024/Figure_S4.pdf')),width = 12,height = 8)
+((pathology_placeholder | ((plot_allmethods / plot_macro ) + plot_layout(height = c(5,3)))) + plot_layout(width = c(7,5))) + plot_annotation(tag_levels = 'A')
+dev.off()
+```
+
+
+```{r info}
+sessionInfo()
+```

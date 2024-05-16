@@ -1,5 +1,5 @@
 ---
-title: "Single-cell and single-nucleus RNA-sequencing of the same paired normal-adenocarcinoma lung samples provides divergent biological information"
+title: "Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights"
 author: "Sébastien Renaut (sebastien.renaut@criucpq.ulaval.ca)"
 date: "`r Sys.time()`"
 output:
@@ -116,7 +116,7 @@ dev.off()
 ```{r barplot inspired by Lambrechts et al 2018}
 sc_sn_plots = list()
 
-#combined_permethod = readRDS(file.path(params$datapath,'combined_permethod_pertypeN24.rds'))
+
 for(i in 1:2){
 metadata_simplified = combined_permethod[[i]]@meta.data
 metadata_simplified$patient[metadata_simplified$patient == 4] = 1
@@ -128,7 +128,7 @@ metadata_simplified$patient[metadata_simplified$patient == 10] = 4
 metadata_simplified$predicted.ann_level_3[metadata_simplified$predicted.ann_level_3=='None'] = 'Unclassified'
 metadata_simplified$predicted.ann_level_1[metadata_simplified$predicted.ann_level_1=='Unclassified'] = 'Unc'
 
-#filter rare celltypes
+#filter rare cell types
 celltypes = as.matrix(table(metadata_simplified$predicted.ann_level_3,metadata_simplified$predicted.ann_level_1))
 
 flush = 0
@@ -137,7 +137,6 @@ for(c in 1:ncol(celltypes))
   rare = rownames(celltypes)[celltypes[,c]<20]
   #filter 
   if(c != ncol(celltypes)) {temp = c(1:nrow(metadata_simplified))[(metadata_simplified$predicted.ann_level_3 %in% rare) & metadata_simplified$predicted.ann_level_1 == colnames(celltypes)[c]]}
-  #if(c == ncol(celltypes)) {temp = c(1:nrow(metadata_simplified))[(metadata_simplified$predicted.ann_level_3 == 'unknown') & metadata_simplified$predicted.ann_level_1 == colnames(celltypes)[c]]}
   flush = c(temp,flush)
 }
 
@@ -159,7 +158,6 @@ data_summarised$nFeature_RNA_mean = 0
 data_summarised$cnv_mean = 0
 unique_patients = unique(data_summarised$patient)
 
-
 #keep best labels
 for(u in unique(data_summarised$predicted.ann_level_3)){  
   temp = data_summarised[data_summarised$predicted.ann_level_3==u,] 
@@ -176,7 +174,6 @@ for(u in unique(data_summarised$predicted.ann_level_3)){
   }
   data_summarised[data_summarised$predicted.ann_level_3 ==u,] = temp
 }
-
 
 data_summarised$predicted.ann_level_1 = factor(data_summarised$predicted.ann_level_1,level = c('Immune','Epithelial','Endothelial','Stroma','Unc'))
 
@@ -203,8 +200,6 @@ number_of_cells = ggplot(data_summarised, aes(n,predicted.ann_level_3 ,fill = pa
    theme_bw() + theme(legend.position = 'none',strip.background = element_blank(),
   strip.text.y = element_blank(),axis.title.y=element_blank(),axis.text.y=element_blank(),axis.title.x= list(element_blank(),element_text())[[i]])
 
-
-#data_summarised_UMI = data_summarised[data_summarised$patient=='P4',]
 number_of_UMI = ggplot(metadata_simplified, aes(nCount_RNA,predicted.ann_level_3)) + geom_boxplot(fill = "deeppink") + scale_x_continuous(trans= 'log10',breaks = c(500,1500,5000,15000,50000), label = c(500,1500,5000,15000,50000)) +
     facet_grid(predicted.ann_level_1 ~ ., scales = "free", space = "free",switch = 'y') +
   ylab('clusters') +

@@ -44,6 +44,30 @@ filenames =  list.files('.',pattern = '-C[ST]T-',full.names = F)
 filepaths = file.path(getwd(),filenames,'filtered_feature_bc_matrix.h5')
 
 filenames
+
+files_metadata = data.frame(filenames = filenames, method = '', tissue  = '', patient_original_label = '', patient_PLOS_genetics_label = '')
+
+for(i in seq_along(filenames)){
+# Generate metadata
+temp = strsplit(filenames[i],split = '_')[[1]]
+
+if(temp[2]=='all') files_metadata$method[i]='Cell'
+if(temp[2]=='depletion') files_metadata$method[i]='Immune-depleted cells'
+if(temp[2]=='SN') files_metadata$method[i]='Nucleus'
+
+files_metadata$tissue[i] = ifelse(regexpr('CST',temp[1])>0,'Normal','Tumor')
+
+files_metadata$patient_original_label[i] = strsplit(temp[1],fixed = T,'-')[[1]][1]
+
+}
+
+#new labels
+files_metadata$patient_PLOS_genetics_label[files_metadata$patient_original_label == 4] = 1
+files_metadata$patient_PLOS_genetics_label[files_metadata$patient_original_label == 6] = 2
+files_metadata$patient_PLOS_genetics_label[files_metadata$patient_original_label == 8] = 3
+files_metadata$patient_PLOS_genetics_label[files_metadata$patient_original_label == 10] = 4
+
+write.csv(files_metadata,file.path(params$datapath,"../results/files_metadata.csv"),row.names = F)
 ```
 
 #prepare the seurat object and metadata.
@@ -176,9 +200,7 @@ write.csv(metadata,file.path(params$datapath,"adeno.24samples_metadata.csv"))
 
 
 ```{r infercnv}
-#seurat.objects = readRDS(file.path(params$datapath,"adeno.24samples_27_07_23CNV.rds"))
-
-metadata_infercnv = list()
+adata_infercnv = list()
 for(i in 1:12)
 {
 #per sample, per method NT combined:
@@ -221,9 +243,6 @@ print(paste0('------DONE: ',i, ', The time is: ',Sys.time()))
 #save up
 write.csv(combinedNT_infercnv_summary,file.path(params$datapath,'infercnv/combinedNT_infercnv_summary.csv'))
 ```
-
-
-
 
 
 # DONE  

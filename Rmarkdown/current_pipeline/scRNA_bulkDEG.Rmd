@@ -202,11 +202,9 @@ for(c in 1:4)
   bulk_final_summary$commonAB[c+4] = length(intersect(tempA$genes[tempA$signif =='YES'],tempB$genes[tempB$signif =='YES']))
   
   bulk_final_summary$expectedAB[c+4] =  round((length(tempA$signif[tempA$signif =='YES'])  /nrow(tempA)) * ( length(tempB$signif[tempB$signif =='YES']) /nrow(tempB)) *  nrow(merge(tempA,tempB,by = 'genes')))
-  
-  
 }
 
-#bulk_final_summary_final = bulk_final_summary[,-c(1,8)]
+
 bulk_final_summary_final = rbind(bulk_final_summary[1:4,],rep('',13),bulk_final_summary[5:8,])
 rownames(bulk_final_summary_final) = c(bulk_final_summary$celltype[1:4],'',paste0(bulk_final_summary$celltype[1:4],' '))
 
@@ -371,23 +369,11 @@ plot_correl = ggplot(data = gexpr_pivoted, aes(x = x, y = y,color = comparison))
   theme_bw() + 
   theme(legend.position = 'none',strip.text = element_text(size=10))
 
-
-
-
-
-#pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_gexpr_cor.pdf'),width = 15,height = 8) 
-#corrplot(gexpr_cor,type = 'upper',order = 'hclust',col.lim = c(0.75,1),col = RColorBrewer::brewer.pal(name = 'Purples',n =9),is.corr =F,addrect=1, rect.col= 'black', tl.col = "black",method = 'number')
-
-#corrRect(p, name = c("Normal_Cell_Immune","Tumor_Nucleus_Epithelial",'Normal_Nucleus_Stroma'))
-#dev.off()
-
-
 #
 table = bulk_final_summary_final[,c(2,3,8,12,13)]
 colnames(table)[4:5] = c('DEGs common\n(observed)\nin A and B','DEGs common\n(expected)\nin A and B')
 
 pdf(file.path(params$datapath,'../results/Figures_March2024/Fig_8_degs.pdf'),width = 16,height = 10) 
-#corrplot(gexpr_cor,type = 'upper',order = 'hclust',col.lim = c(0.75,1),col = RColorBrewer::brewer.pal(name = 'Purples',n =9),is.corr =F,addrect=1, rect.col= 'black', tl.col = "black",method = 'number') + 
 (
   ((plot_correl | dendro_plot | volcano_plots[[2]] )  + plot_layout(widths=c(6,3,7) ))  /
   ((wrap_elements(tableGrob(table))|plot_spacer()|go_plot)             + plot_layout(widths=c(8,2,6) ))
