@@ -10,7 +10,7 @@
      * `scRNA_umap_featureplots_allcells.Rmd` (two supplementary plots)
      * `scRNA_bulkDEG.Rmd` (differential gene expression analyses and plots)
      * `scRNA_H&E.Rmd` (immunohistochemical analyses and plots)
-  * There are several R functions described in the [R](https://github.com/Yohan-Bosse-Lab/scRNA/tree/main/R) subfolder directly.
+  * There are several helper functions described in the [R](https://github.com/Yohan-Bosse-Lab/scRNA/tree/main/R) subfolder directly.
 
 
 
@@ -28,9 +28,9 @@ library(scAnnotatR) #cell type annotation
 
 
 ## Further information
-  * [sebastien.renaut.1@ulaval.ca] and [yohan.bosse@criucpq.ulaval.ca]
+  * sebastien.renaut.1@ulaval.ca and yohan.bosse@criucpq.ulaval.ca
   * [www.yohanbosselab.com](https://www.yohanbosselab.com/)
 
 
 ## Reference  
-  *  Sébastien Renaut, Victoria Saavedra Armero, Dominique K. Boudreau, Nathalie Gaudreault, Patrice Desmeules, Sébastien Thériault, Patrick Mathieu, Philippe Joubert, Yohan Bossé. Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights. *PLOS Genetics*. 2024 *accepted*.
+  *  Sébastien Renaut, Victoria Saavedra Armero, Dominique K. Boudreau, Nathalie Gaudreault, Patrice Desmeules, Sébastien Thériault, Patrick Mathieu, Philippe Joubert, Yohan Bossé. Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights. *PLOS Genetics (accepted)*. 2024.
