@@ -33,4 +33,6 @@ library(scAnnotatR) #cell type annotation
 
 
 ## Reference  
-  *  Sébastien Renaut, Victoria Saavedra Armero, Dominique K. Boudreau, Nathalie Gaudreault, Patrice Desmeules, Sébastien Thériault, Patrick Mathieu, Philippe Joubert, Yohan Bossé. Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provides both common and discordant biological insights. *PLOS Genetics (accepted)*. 2024.
+  *  Sébastien Renaut, Victoria Saavedra Armero, Dominique K. Boudreau, Nathalie Gaudreault, Patrice Desmeules, Sébastien Thériault, Patrick Mathieu, Philippe Joubert, Yohan Bossé. Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provide both common and discordant biological insights. *PLOS Genetics (accepted)*. 2024.
+  *  [Sébastien Renaut, Victoria Saavedra Armero, Dominique K. Boudreau, Nathalie Gaudreault, Patrice Desmeules, Sébastien Thériault, Patrick Mathieu, Philippe Joubert, Yohan Bossé. Single-cell and single-nucleus RNA-sequencing from paired normal-adenocarcinoma lung samples provide both common and discordant biological insights. bioarxiv. 2024](https://www.biorxiv.org/content/10.1101/2024.02.20.581199v2)
+
