@@ -138,7 +138,6 @@ for(c in seq_along(cell_type)){
   combined_permethod_percelltype[[c]][[2]]@meta.data$predicted.ann_level_3)
   all_types = names(table(all_types))
   
-  
   all_colors = c(brewer.pal(n =12, name = "Paired")[-8],'gray','black','darkred')[1:length(all_types)]
   all_colors[length(all_colors)] = '#FF7F00'#ensure that orange [8] is last for unknown...
   all_colors_type = data.frame(all_types,all_colors)

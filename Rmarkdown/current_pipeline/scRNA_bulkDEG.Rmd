@@ -37,7 +37,7 @@ source('../R/infercnv.R')
 
 # Loading data  
 ```{r loading,message  = T}  
-seurat.objects =readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
+seurat.objects = readRDS(file.path(params$datapath,"adeno.24samples_27_07_23cnv.rds"))
 filenames =  list.files(params$datapath,pattern = '-C[ST]T-',full.names = F)
 
 metadata = read.csv(file.path(params$datapath,"adeno.24samples_metadata.csv"),row.names = 1)
