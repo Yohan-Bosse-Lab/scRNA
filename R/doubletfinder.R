@@ -1,4 +1,8 @@
-library(DoubletFinder)
+
+#packages requirements
+try = try(library(DoubletFinder),silent=TRUE)
+
+if( class(try) == "try-error") {devtools::install_github('chris-mcginnis-ucsf/DoubletFinder');library(DoubletFinder)}
 library(Seurat)
 
 
@@ -13,7 +17,7 @@ doubletfinder_wrapper = function(seurat.object= NULL,pK_empirical=NULL,db_rate =
   }
   
   ## Run DoubletFinder 
-  out <- doubletFinder_v3(seurat.object,
+  out <- doubletFinder(seurat.object,
                                PCs = PCs,
                                pN = pN,
                                pK = pK_empirical,
