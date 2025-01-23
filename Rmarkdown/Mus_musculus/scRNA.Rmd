@@ -113,6 +113,10 @@ for(i in 1:2) {
 
 # Save filtered data as .h5Seurat objects
 ```{r save, echo = T}
+seurat.objects[[1]][["RNA"]] <- as(object = seurat.objects[[1]][["RNA"]], Class = "Assay")
+seurat.objects[[2]][["RNA"]] <- as(object = seurat.objects[[2]][["RNA"]], Class = "Assay")
+seurat.objects[[3]][["RNA"]] <- as(object = seurat.objects[[3]][["RNA"]], Class = "Assay")
+
 SaveH5Seurat(seurat.objects[[1]], overwrite = T,filename =  file.path(params$datapath,'CIH_mm10_vM23/CIH_mm10_vM23.h5Seurat'))
 SaveH5Seurat(seurat.objects[[2]], overwrite = T,filename =  file.path(params$datapath,'NX_mm10_vM23/NX_mm10_vM23.h5Seurat'))
 saveRDS(seurat.objects, file = file.path(params$datapath,"mm_2samples.rds"))
@@ -131,11 +135,11 @@ seurat.objects[[1]] <- AddMetaData(object = seurat.objects[[1]],metadata = annot
 seurat.objects[[2]] <- AddMetaData(object = seurat.objects[[2]],metadata = annotations_NX$pred.df)
 
 #add reference UMAPs
-seurat.objects[[1]][['proj.umap']] <- CreateDimReducObject(embeddings = annotations_CIH$umap@cell.embeddings, key = 'proj.umap', assay = 'RNA')
-seurat.objects[[2]][['proj.umap']] <- CreateDimReducObject(embeddings = annotations_NX$umap@cell.embeddings, key = 'proj.umap', assay = 'RNA')
+seurat.objects[[1]]@reductions[['proj.umap']] <- CreateDimReducObject(embeddings = annotations_CIH$umap@cell.embeddings, key = 'proj.umap', assay = 'RNA')
+seurat.objects[[2]]@reductions[['proj.umap']] <- CreateDimReducObject(embeddings = annotations_NX$umap@cell.embeddings, key = 'proj.umap', assay = 'RNA')
 
 #merge object (remember seurat.objects[[3]] is already the raw data)
-seurat.objects[[4]] =  merge(seurat.objects[[1]],seurat.objects[[2]],merge.dr = 'proj.umap')
+seurat.objects[[4]] =  merge(seurat.objects[[1]],seurat.objects[[2]])
 
 #annotations
 write.csv(seurat.objects[[4]]@meta.data,file.path(params$datapath,'metadata_mus_musculus_annotations.csv'))
