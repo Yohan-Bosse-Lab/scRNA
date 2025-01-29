@@ -69,7 +69,7 @@ for(i in 1:length(filenames)) {
   seurat.objects[[i]]@meta.data$filename = filenames[i]
 
   # Normalisation using SCT
-  seurat.objects[[i]] <- SCTransform(seurat.objects[[i]], method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = F)
+   seurat.objects[[i]] <- SCTransform(seurat.objects[[i]], method = "glmGamPoi", vars.to.regress = "percent.mt", verbose = F)
   
   print(paste0(i,' --- Time: ',Sys.time(),' -- seurat object ready (subsetting, normalisation)'))
 }
@@ -113,13 +113,20 @@ for(i in 1:2) {
 
 # Save filtered data as .h5Seurat objects
 ```{r save, echo = T}
-seurat.objects[[1]][["RNA"]] <- as(object = seurat.objects[[1]][["RNA"]], Class = "Assay")
-seurat.objects[[2]][["RNA"]] <- as(object = seurat.objects[[2]][["RNA"]], Class = "Assay")
-seurat.objects[[3]][["RNA"]] <- as(object = seurat.objects[[3]][["RNA"]], Class = "Assay")
+#seurat.objects[[1]][["RNA"]] <- as(object = seurat.objects[[1]][["RNA"]], Class = "Assay")
+#seurat.objects[[2]][["RNA"]] <- as(object = seurat.objects[[2]][["RNA"]], Class = "Assay")
+#seurat.objects[[3]][["RNA"]] <- as(object = seurat.objects[[3]][["RNA"]], Class = "Assay")
 
-SaveH5Seurat(seurat.objects[[1]], overwrite = T,filename =  file.path(params$datapath,'CIH_mm10_vM23/CIH_mm10_vM23.h5Seurat'))
-SaveH5Seurat(seurat.objects[[2]], overwrite = T,filename =  file.path(params$datapath,'NX_mm10_vM23/NX_mm10_vM23.h5Seurat'))
+#SaveH5Seurat(seurat.objects[[1]], overwrite = T,filename =  file.path(params$datapath,'CIH_mm10_vM23/CIH_mm10_vM23.h5Seurat'))
+#SaveH5Seurat(seurat.objects[[2]], overwrite = T,filename =  file.path(params$datapath,'NX_mm10_vM23/NX_mm10_vM23.h5Seurat'))
+#saveRDS(seurat.objects, file = file.path(params$datapath,"mm_2samples.rds"))
+
+
+saveRDS(seurat.objects[[1]],file.path(params$datapath,'CIH_mm10_vM23/CIH_mm10_vM23.rds'))
+saveRDS(seurat.objects[[2]],file.path(params$datapath,'NX_mm10_vM23/NX_mm10_vM23.rds'))
 saveRDS(seurat.objects, file = file.path(params$datapath,"mm_2samples.rds"))
+
+
 ```
 
 
@@ -171,9 +178,9 @@ dimplot_sam = DimPlot(seurat.objects[[4]],reduction = 'proj.umap',group.by = 'sa
 #featplot 
 #dev.off()
 
-#pdf(file.path(params$datapath,'../results/UMAP_2samples.pdf'),width = 12,height = 12) 
+pdf(file.path(params$datapath,'../results/UMAP_2samples.pdf'),width = 12,height = 12) 
 (dimplot_lev1 | dimplot_lev3) / (dimplot_sam  | viol_plots)
-#dev.off()
+dev.off()
   
 ```
 
